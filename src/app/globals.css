@@ -307,13 +307,13 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
   .sidebar { display: none; }
   .app-main { padding: 20px 16px calc(100px + var(--safe-bottom)); }
   .tabbar {
-    display: grid; grid-template-columns: repeat(6, 1fr);
+    display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 60;
     padding: 6px 4px calc(6px + var(--safe-bottom));
     background: var(--tabbar-bg); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
     border-top: 1px solid var(--hairline);
   }
-  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; font-weight: 500; color: var(--muted); padding: 4px 0; letter-spacing: 0; }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--muted); padding: 4px 0; letter-spacing: 0; }
   .tabbar a:hover { text-decoration: none; }
   .tabbar a .ico { font-size: 22px; line-height: 1.1; filter: grayscale(1); opacity: .7; }
   .tabbar a[aria-current="page"] { color: var(--accent); }

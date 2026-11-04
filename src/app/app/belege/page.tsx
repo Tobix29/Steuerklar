@@ -8,6 +8,7 @@ import { belegAmount } from "@/lib/tax/apply";
 import type { StoredDocument } from "@/lib/server/repo";
 import { useCase } from "../CaseContext";
 import { BankImport } from "./BankImport";
+import { downscale } from "@/lib/client/image";
 
 const LZ_FIELDS: [keyof LohnzettelFields, string, string][] = [
   ["kz210", "Bruttobezüge", "210"],
@@ -27,24 +28,6 @@ const emptyLz = (): LohnzettelFields => ({
   arbeitgeber: null, istPension: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
   kz717: null, kz718: null, kz916: null, telearbeitstage: null, telearbeitspauschale: null,
 });
-
-/** Verkleinert Fotos im Browser (max. 2000 px, JPEG) – schneller, datensparsamer und unter dem Upload-Limit. */
-async function downscale(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || file.size < 600_000) return file;
-  try {
-    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bmp.width * scale);
-    canvas.height = Math.round(bmp.height * scale);
-    canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    bmp.close();
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.86));
-    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
-  } catch {
-    return file; // z. B. HEIC in Browsern ohne Unterstützung → Server versucht es
-  }
-}
 
 interface Upload { key: string; name: string; preview: string | null; status: "uploading" | "error"; error?: string }
 

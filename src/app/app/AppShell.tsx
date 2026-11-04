@@ -11,6 +11,7 @@ const NAV = [
   { href: "/app/belege", label: "Belege", icon: "📸" },
   { href: "/app/ergebnis", label: "Ergebnis", icon: "📊" },
   { href: "/app/assistent", label: "Fragen", icon: "💬" },
+  { href: "/app/finanzamt", label: "Finanzamt", icon: "🏛️" },
   { href: "/app/konto", label: "Konto", icon: "⚙️" },
 ];
 

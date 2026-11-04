@@ -68,3 +68,24 @@ export async function askAssistant(
 export function scanBankStatement(csv: string, year: number) {
   return api<{ findings: import("@/lib/ai/bank").BankFinding[]; hinweis: string | null }>("/api/bank-import", { method: "POST", json: { csv, year } });
 }
+
+type Bescheid = import("@/lib/ai/finanzamt").Bescheid;
+type BescheidPruefung = import("@/lib/ai/finanzamt").BescheidPruefung;
+type FaPost = import("@/lib/ai/finanzamt").Post;
+
+/** Steuerbescheid hochladen und mit der eigenen Berechnung vergleichen (wird nicht gespeichert). */
+export function pruefeBescheid(file: File, year: number, zustellung: "databox" | "post") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("year", String(year));
+  fd.append("zustellung", zustellung);
+  return api<{ bescheid: Bescheid; pruefung: BescheidPruefung }>("/api/finanzamt/bescheid", { method: "POST", body: fd });
+}
+
+/** Brief vom Finanzamt erklären lassen und eine Antwort entwerfen (wird nicht gespeichert). */
+export function erklaereBrief(file: File, year: number) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("year", String(year));
+  return api<{ post: FaPost }>("/api/finanzamt/post", { method: "POST", body: fd });
+}

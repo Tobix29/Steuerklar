@@ -10,6 +10,7 @@ import Overview from "@/app/app/page";
 import Profil from "@/app/app/profil/page";
 import Belege from "@/app/app/belege/page";
 import Ergebnis from "@/app/app/ergebnis/page";
+import Finanzamt from "@/app/app/finanzamt/page";
 import Konto from "@/app/app/konto/page";
 import Assistent from "@/app/app/assistent/page";
 import { usePathname } from "./shims/next-navigation";
@@ -24,6 +25,7 @@ const PAGES: Record<string, () => React.ReactElement> = {
   "/app/belege": Belege,
   "/app/ergebnis": Ergebnis,
   "/app/assistent": Assistent,
+  "/app/finanzamt": Finanzamt,
   "/app/konto": Konto,
 };
 

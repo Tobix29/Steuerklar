@@ -9,6 +9,7 @@ export const ROUTES: Record<string, string> = {
   "/app/belege": "belege",
   "/app/ergebnis": "ergebnis",
   "/app/assistent": "assistent",
+  "/app/finanzamt": "finanzamt",
   "/app/konto": "konto",
 };
 

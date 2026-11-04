@@ -1,8 +1,8 @@
 "use client";
 import { MoneyInput, NumberInput, Segmented, Toggle } from "@/components/ui";
 import { eur, uid } from "@/lib/client/api";
-import { YEAR_PARAMS } from "@/lib/tax/constants";
-import { betrieb, gebaeudeAfa, vermietung } from "@/lib/tax/einkuenfte";
+import { gwgGrenze, YEAR_PARAMS } from "@/lib/tax/constants";
+import { anlageAfa, betrieb, gebaeudeAfa, vermietung } from "@/lib/tax/einkuenfte";
 import { BetriebSchema, MietobjektSchema, type TaxCase } from "@/lib/tax/types";
 import type { TaxYear } from "@/lib/tax/constants";
 
@@ -169,6 +169,63 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <Row label="SVS-Beiträge bezahlt" help="Sind immer zusätzlich absetzbar">
                 <MoneyInput ariaLabel="SVS-Beiträge" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
               </Row>
+              {b.gewinnermittlung === "ear" && (
+                <>
+                  <div className="list-item" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <div className="grow" style={{ minWidth: 180 }}>
+                      <div>Anlagenverzeichnis</div>
+                      <div className="tiny muted">Laptop, Möbel, Auto … über {eur(gwgGrenze(year), 0)} werden über die Nutzungsdauer abgeschrieben, darunter sofort (geringwertige Wirtschaftsgüter)</div>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => upd((x) => void x.anlagen.push({ id: uid(), bezeichnung: "", anschaffungsjahr: year, anschaffungsmonat: 1, kosten: 0, nutzungsdauer: 3, privatanteil: 0, pkw: false }))}
+                    >
+                      + Wirtschaftsgut
+                    </button>
+                  </div>
+                  {b.anlagen.map((a, j) => {
+                    const afa = anlageAfa(a, year);
+                    const ua = (fn: (x: (typeof b.anlagen)[number]) => void) => upd((x) => fn(x.anlagen[j]!));
+                    return (
+                      <div key={a.id} className="list-item" style={{ flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+                        <div className="field" style={{ flex: "2 1 180px" }}>
+                          <span className="tiny muted">Bezeichnung</span>
+                          <input className="input input-inline" aria-label="Bezeichnung Wirtschaftsgut" placeholder="z. B. Laptop" value={a.bezeichnung} onChange={(e) => ua((x) => void (x.bezeichnung = e.target.value.slice(0, 200)))} />
+                        </div>
+                        <div className="field" style={{ flex: "1 1 130px" }}>
+                          <span className="tiny muted">Kosten (netto)</span>
+                          <MoneyInput ariaLabel="Anschaffungskosten" value={a.kosten} onChange={(v) => ua((x) => void (x.kosten = v))} />
+                        </div>
+                        <div className="field" style={{ flex: "1 1 90px" }}>
+                          <span className="tiny muted">Jahr</span>
+                          <NumberInput ariaLabel="Anschaffungsjahr" value={a.anschaffungsjahr} max={2100} onChange={(v) => ua((x) => void (x.anschaffungsjahr = Math.max(1990, v)))} />
+                        </div>
+                        <div className="field" style={{ flex: "1 1 80px" }}>
+                          <span className="tiny muted">Monat</span>
+                          <NumberInput ariaLabel="Anschaffungsmonat" value={a.anschaffungsmonat} max={12} onChange={(v) => ua((x) => void (x.anschaffungsmonat = Math.min(12, Math.max(1, v))))} />
+                        </div>
+                        <div className="field" style={{ flex: "1 1 90px" }}>
+                          <span className="tiny muted">Nutzungsdauer</span>
+                          <NumberInput ariaLabel="Nutzungsdauer in Jahren" value={a.nutzungsdauer} max={50} suffix="J." onChange={(v) => ua((x) => void (x.nutzungsdauer = Math.max(1, v)))} />
+                        </div>
+                        <div className="field" style={{ flex: "1 1 90px" }}>
+                          <span className="tiny muted">Privatanteil</span>
+                          <NumberInput ariaLabel="Privatanteil in Prozent" value={a.privatanteil} max={100} suffix="%" onChange={(v) => ua((x) => void (x.privatanteil = v))} />
+                        </div>
+                        <label className="row small" style={{ gap: 6, flex: "0 0 auto" }}>
+                          <Toggle label="Pkw" checked={a.pkw} onChange={(v) => ua((x) => void (x.pkw = v))} /> Pkw
+                        </label>
+                        <div className="grow tiny muted" style={{ flexBasis: "100%" }}>
+                          AfA {year}: <strong className="num">{eur(afa.afa * (1 - a.privatanteil / 100))}</strong>
+                          {afa.gwg ? " · sofort abgeschrieben (GWG)" : ` · Restwert ${eur(afa.restwert)}`}
+                          {a.pkw ? " · Pkw: max. 40.000 €, mind. 8 Jahre; Vorsteuer nur bei E-Autos" : ""}
+                          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 8 }} aria-label="Wirtschaftsgut entfernen" onClick={() => upd((x) => void x.anlagen.splice(j, 1))}>✕</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
               <div className="list-item strong">
                 <span className="grow">Gewinn {year} (nach Gewinnfreibetrag)</span>
                 <span className="value">{eur(r.gewinn)}</span>

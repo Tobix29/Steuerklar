@@ -4,6 +4,7 @@ import { eur } from "@/lib/client/api";
 import { insights } from "@/lib/tax/insights";
 import { useCase } from "./CaseContext";
 import { YearsOverview } from "./YearsOverview";
+import { NaechsteTermine, RuecklagenPlaner } from "./Planer";
 
 export default function Overview() {
   const { data, result, year, documentCount, error, storagePersistent } = useCase();
@@ -60,6 +61,10 @@ export default function Overview() {
       </section>
 
       <YearsOverview />
+
+      <NaechsteTermine data={data} result={result} />
+
+      <RuecklagenPlaner data={data} result={result} />
 
       <section className="stack">
         <div className="row-between">

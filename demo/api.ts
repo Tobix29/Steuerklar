@@ -12,7 +12,9 @@ import { TaxCaseSchema } from "@/lib/tax/types";
 import type { StoredDocument } from "@/lib/server/repo";
 import { store } from "./store";
 import { pdfToImages } from "./pdf";
-import { fristIcs } from "@/lib/tax/calendar";
+import { fristIcs, termineIcs } from "@/lib/tax/calendar";
+import { termine } from "@/lib/tax/planer";
+import { BESCHEID_INSTRUCTIONS, BescheidSchema, compareBescheid, postInstructions, PostSchema, type Bescheid, type BescheidPruefung, type Post } from "@/lib/ai/finanzamt";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
 import { BankResultSchema, bankInstructions, prepareCsv, type BankFinding } from "@/lib/ai/bank";
 
@@ -210,8 +212,14 @@ export async function download(path: string): Promise<string> {
     filename = `Arbeitnehmerveranlagung-${year}-Ausfuellhilfe.pdf`;
   } else if (url.pathname === "/api/calendar") {
     const year = parseYear(url.searchParams.get("year"));
-    data = fristIcs(year);
-    filename = `Frist-Arbeitnehmerveranlagung-${year}.ics`;
+    if (url.searchParams.get("alle") === "1") {
+      const c = await s.getCase(year);
+      data = termineIcs(termine(c, calculate(c)));
+      filename = `Steuertermine-${year}.ics`;
+    } else {
+      data = fristIcs(year);
+      filename = `Frist-Arbeitnehmerveranlagung-${year}.ics`;
+    }
   } else if (url.pathname === "/api/account/export") {
     const years = [];
     for (const y of SUPPORTED_YEARS) years.push({ year: y, case: await s.getCase(y), documents: await s.listDocs(y) });
@@ -280,4 +288,55 @@ ${data}
     if (code === "rate_limited") throw new ApiError(429, "Die KI ist gerade ausgelastet. Bitte in einer Minute erneut versuchen.");
     throw new ApiError(500, "Der Kontoauszug konnte nicht ausgewertet werden.");
   }
+}
+
+/** Schreiben (Foto/PDF) über die `sample`-Capability auslesen lassen. */
+async function readLetter<T>(file: File, schema: z.ZodType<T>, instructions: string, task: string): Promise<T> {
+  const sample = await capability("sample");
+  const limits = sample ? await sample.limits().catch(() => null) : null;
+  if (!sample || !limits?.images) throw new ApiError(503, "Das Auslesen von Schreiben ist in dieser Ansicht nicht verfügbar. Öffne das Artifact direkt auf claude.ai und melde dich an.");
+  if (file.size > 10 * 1024 * 1024) throw new ApiError(413, "Die Datei ist größer als 10 MB.");
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  let images: Blob[] = [file];
+  if (isPdf) {
+    try {
+      images = await pdfToImages(file, Math.min(4, limits.images.maxCount ?? 4), Math.min(3_500_000, limits.images.maxInputBytes ?? 3_500_000));
+    } catch {
+      throw new ApiError(422, "Das PDF konnte nicht gelesen werden. Lade sonst ein Foto oder einen Screenshot hoch.");
+    }
+  }
+  const prompt = `${instructions}
+
+${task}
+Antworte ausschließlich mit einem JSON-Objekt, das genau diesem JSON-Schema entspricht (keine Erklärungen, kein Markdown):
+${JSON.stringify(z.toJSONSchema(schema))}`;
+  try {
+    const out = await sample.json(prompt, { images, modelTier: "default", cache: false });
+    const parsed = schema.safeParse(out);
+    if (!parsed.success) throw new ApiError(422, "Die Auswertung lieferte ungültige Daten. Bitte ein schärferes Foto verwenden.");
+    return parsed.data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const code = (err as { code?: string })?.code;
+    if (code === "not_granted") throw new ApiError(403, "Du hast Claude für diese Seite nicht erlaubt.");
+    if (code === "rate_limited") throw new ApiError(429, "Die KI ist gerade ausgelastet. Bitte in einer Minute erneut versuchen.");
+    throw new ApiError(500, "Das Schreiben konnte nicht ausgewertet werden.");
+  }
+}
+
+export async function pruefeBescheid(file: File, year: number, zustellung: "databox" | "post"): Promise<{ bescheid: Bescheid; pruefung: BescheidPruefung }> {
+  const bescheid = await readLetter(file, BescheidSchema, BESCHEID_INSTRUCTIONS, "Lies den beigefügten Steuerbescheid aus.");
+  const c = await (await store()).getCase(parseYear(String(year)));
+  return { bescheid, pruefung: compareBescheid(bescheid, c, calculate(c), { databox: zustellung === "databox" }) };
+}
+
+export async function erklaereBrief(file: File, year: number): Promise<{ post: Post }> {
+  const c = await (await store()).getCase(parseYear(String(year)));
+  const post = await readLetter(
+    file,
+    PostSchema,
+    postInstructions(new Date().toISOString().slice(0, 10)),
+    `<fall>\n${caseContext(c, calculate(c))}\n</fall>\n\nErkläre das beigefügte Schreiben und entwirf die Antwort.`,
+  );
+  return { post };
 }
