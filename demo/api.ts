@@ -12,6 +12,7 @@ import { TaxCaseSchema } from "@/lib/tax/types";
 import type { StoredDocument } from "@/lib/server/repo";
 import { store } from "./store";
 import { pdfToImages } from "./pdf";
+import { fristIcs } from "@/lib/tax/calendar";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
 import { BankResultSchema, bankInstructions, prepareCsv, type BankFinding } from "@/lib/ai/bank";
 
@@ -207,6 +208,10 @@ export async function download(path: string): Promise<string> {
     const { buildPdf } = await import("@/lib/server/pdf");
     data = await buildPdf(c, calculate(c));
     filename = `Arbeitnehmerveranlagung-${year}-Ausfuellhilfe.pdf`;
+  } else if (url.pathname === "/api/calendar") {
+    const year = parseYear(url.searchParams.get("year"));
+    data = fristIcs(year);
+    filename = `Frist-Arbeitnehmerveranlagung-${year}.ics`;
   } else if (url.pathname === "/api/account/export") {
     const years = [];
     for (const y of SUPPORTED_YEARS) years.push({ year: y, case: await s.getCase(y), documents: await s.listDocs(y) });

@@ -43,7 +43,8 @@ export function YearsOverview() {
                 <button className="btn btn-ghost btn-sm" style={{ padding: 0, minHeight: 0 }} onClick={() => setYear(urgent.year)}>
                   Jetzt {urgent.year} öffnen ›
                 </button>
-              )}
+              )}{" "}
+              <a href={`/api/calendar?year=${urgent.year}`}>📅 Erinnerung in den Kalender</a>
             </div>
           </div>
         </div>
