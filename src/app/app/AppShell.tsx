@@ -1,0 +1,94 @@
+"use client";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { api } from "@/lib/client/api";
+import { SUPPORTED_YEARS, type TaxYear } from "@/lib/tax/constants";
+import { CaseProvider, useCase } from "./CaseContext";
+
+const NAV = [
+  { href: "/app", label: "Übersicht", icon: "🏠" },
+  { href: "/app/profil", label: "Über dich", icon: "👤" },
+  { href: "/app/belege", label: "Belege", icon: "📸" },
+  { href: "/app/ergebnis", label: "Ergebnis", icon: "📊" },
+  { href: "/app/konto", label: "Konto", icon: "⚙️" },
+];
+
+function YearPicker() {
+  const { year, setYear } = useCase();
+  return (
+    <select className="select year-picker" aria-label="Steuerjahr" value={year} onChange={(e) => setYear(Number(e.target.value) as TaxYear)}>
+      {SUPPORTED_YEARS.map((y) => (
+        <option key={y} value={y}>
+          {y}
+          {y === 2026 ? " · Prognose" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function SaveIndicator() {
+  const { saveState } = useCase();
+  if (saveState === "idle") return null;
+  const map = { saving: ["Speichert …", ""], saved: ["Gespeichert", "badge-green"], error: ["Fehler beim Speichern", "badge-red"] } as const;
+  const [t, c] = map[saveState];
+  return <span className={`badge ${c}`}>{saveState === "saved" ? "✓ " : ""}{t}</span>;
+}
+
+export function AppShell({ email, children }: { email: string; children: React.ReactNode }) {
+  const path = usePathname();
+  const router = useRouter();
+  const isActive = (href: string) => (href === "/app" ? path === "/app" : path.startsWith(href));
+
+  async function logout() {
+    await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.replace("/anmelden");
+    router.refresh();
+  }
+
+  return (
+    <CaseProvider>
+      <div className="app-shell">
+        <aside className="sidebar">
+          <Link href="/app" className="brand">
+            <span className="brand-mark" aria-hidden="true">✓</span>
+            Steuerklar
+          </Link>
+          <nav className="stack" style={{ "--gap": "2px" } as React.CSSProperties} aria-label="App-Navigation">
+            {NAV.map((n) => (
+              <Link key={n.href} href={n.href} className="side-link" aria-current={isActive(n.href) ? "page" : undefined}>
+                <span className="ico" aria-hidden="true">{n.icon}</span>
+                {n.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="spacer" />
+          <div className="stack" style={{ "--gap": "10px", padding: "0 10px" } as React.CSSProperties}>
+            <YearPicker />
+            <div className="tiny muted" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{email}</div>
+            <button className="btn btn-secondary btn-sm" onClick={logout}>Abmelden</button>
+          </div>
+        </aside>
+        <main className="app-main">
+          <div className="mobile-top">
+            <Link href="/app" className="brand">
+              <span className="brand-mark" aria-hidden="true">✓</span>
+              Steuerklar
+            </Link>
+            <YearPicker />
+          </div>
+          <div className="save-indicator"><SaveIndicator /></div>
+          {children}
+        </main>
+        <nav className="tabbar" aria-label="App-Navigation">
+          {NAV.map((n) => (
+            <Link key={n.href} href={n.href} aria-current={isActive(n.href) ? "page" : undefined}>
+              <span className="ico" aria-hidden="true">{n.icon}</span>
+              {n.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </CaseProvider>
+  );
+}
