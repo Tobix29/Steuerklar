@@ -301,14 +301,30 @@ export default function Profil() {
           <Row label="Zinsen mit 25 % KESt" help="Sparbuch, Festgeld, Girokonto">
             <MoneyInput ariaLabel="Zinsen 25 %" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
           </Row>
-          <Row label="Realisierte Verluste aus anderen Depots" help="Kursverluste, die deine Bank nicht schon mit Gewinnen verrechnet hat (Verlustausgleich)">
+          <Row label="Realisierte Verluste aus anderen Depots" help="Kursverluste (auch Krypto), die deine Bank nicht schon mit Gewinnen verrechnet hat (Verlustausgleich)">
             <MoneyInput ariaLabel="Verluste Kapital" value={data.kapital.verluste275} onChange={(v) => set((d) => void (d.kapital.verluste275 = v))} />
+          </Row>
+          <Row label="Erträge ohne KESt-Abzug (27,5 %)" help="Ausländisches Depot ohne österreichischen KESt-Abzug, Krypto-Gewinne an ausländischen Börsen, Staking-Erträge. Krypto-Tausch ist steuerfrei">
+            <MoneyInput ariaLabel="Erträge ohne KESt" value={data.kapital.ohneKest275} onChange={(v) => set((d) => void (d.kapital.ohneKest275 = v))} />
           </Row>
           <Row label="Bereits abgezogene KESt">
             <MoneyInput ariaLabel="KESt bezahlt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
           </Row>
         </div>
         <p className="tiny muted" style={{ margin: "8px 0 0 16px" }}>Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück. Steuerklar rechnet automatisch, ob es sich lohnt.</p>
+      </section>
+
+      <section>
+        <p className="section-label">Sonstige Einkünfte</p>
+        <div className="list">
+          <Row label="Spekulationsgeschäfte" help="Gewinn aus dem Verkauf von Gold, Kunst, Uhren, Sammlerstücken innerhalb eines Jahres nach dem Kauf – steuerfrei bis 440 €">
+            <MoneyInput ariaLabel="Spekulationsgeschäfte" value={data.sonstige.spekulation} onChange={(v) => set((d) => void (d.sonstige.spekulation = v))} />
+          </Row>
+          <Row label="Gelegentliche Leistungen" help="Vermittlungsprovisionen, gelegentliches Vermieten von Auto oder Gegenständen (nach Abzug der Kosten) – steuerfrei bis 220 €">
+            <MoneyInput ariaLabel="Gelegentliche Leistungen" value={data.sonstige.leistungen} onChange={(v) => set((d) => void (d.sonstige.leistungen = v))} />
+          </Row>
+        </div>
+        <p className="tiny muted" style={{ margin: "8px 0 0 16px" }}>Freigrenze heißt: Wird sie überschritten, ist der ganze Betrag steuerpflichtig. Neben dem Gehalt bleiben Nebeneinkünfte bis 730 € trotzdem steuerfrei.</p>
       </section>
 
       <WeitereEinkuenfte data={data} set={set} year={year} />

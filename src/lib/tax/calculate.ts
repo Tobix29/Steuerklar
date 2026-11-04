@@ -11,7 +11,7 @@
  * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
 import { betrieb, vermietung, veranlagungsfreibetrag } from "./einkuenfte";
-import { IMMOEST, kleinunternehmerUst, VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
+import { IMMOEST, kleinunternehmerUst, SONSTIGE, VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
 import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -194,7 +194,16 @@ export function calculate(input: TaxCase): TaxResult {
   betriebSumme = cents(betriebSumme);
   if (input.mietobjekte.length) formular.push({ formular: "E1b", kz: "—", label: "Beilage E1b je Objekt (Einnahmen, AfA, Werbungskosten)", value: `€ ${eur(vvSumme)}` });
   if (input.betriebe.length) formular.push({ formular: "E1a", kz: "—", label: "Beilage E1a je Betrieb (Gewinnermittlung)", value: `€ ${eur(betriebSumme)}` });
-  const neben = cents(vvSumme + betriebSumme);
+  /* ---- Sonstige Einkünfte (§ 29): Freigrenzen – wird die Grenze überschritten, ist alles steuerpflichtig ---- */
+  const spek = input.sonstige.spekulation > SONSTIGE.spekulationFreigrenze ? input.sonstige.spekulation : 0;
+  const leist = input.sonstige.leistungen > SONSTIGE.leistungenFreigrenze ? input.sonstige.leistungen : 0;
+  if (input.sonstige.spekulation > 0)
+    weitere.push({ label: "Sonstige Einkünfte: Spekulationsgeschäfte (§ 31)", amount: spek, hint: spek ? undefined : `steuerfrei (Freigrenze ${eur(SONSTIGE.spekulationFreigrenze)} €)` });
+  if (input.sonstige.leistungen > 0)
+    weitere.push({ label: "Sonstige Einkünfte: gelegentliche Leistungen (§ 29 Z 3)", amount: leist, hint: leist ? undefined : `steuerfrei (Freigrenze ${eur(SONSTIGE.leistungenFreigrenze)} €)` });
+  const sonstigeSumme = cents(spek + leist);
+  if (sonstigeSumme > 0) formular.push({ formular: "E1", kz: "—", label: "Sonstige Einkünfte (§ 29 EStG) in der E1 erklären", value: `€ ${eur(sonstigeSumme)}` });
+  const neben = cents(vvSumme + betriebSumme + sonstigeSumme);
   const vfb = hasEmployment || hasPension ? veranlagungsfreibetrag(neben, VERANLAGUNGSFREIBETRAG) : 0;
   if (vfb > 0) hinweise.push(`Deine Nebeneinkünfte (${eur(neben)} €) sind ${vfb >= neben ? "zur Gänze" : "teilweise"} steuerfrei (Veranlagungsfreibetrag bis 730 €).`);
   /* ---- Auslandseinkünfte (L1i): Befreiung mit Progressionsvorbehalt oder Anrechnung ---- */
@@ -226,7 +235,7 @@ export function calculate(input: TaxCase): TaxResult {
   let amsKontrolle = false;
 
   const gde = cents(einkuenfte + neben - vfb + anrechnungEink);
-  const e1 = input.mietobjekte.length > 0 || input.betriebe.length > 0;
+  const e1 = input.mietobjekte.length > 0 || input.betriebe.length > 0 || sonstigeSumme > 0 || input.kapital.ohneKest275 > 22;
   if (neben > VERANLAGUNGSFREIBETRAG && (hasEmployment || hasPension))
     pflicht.push("Nebeneinkünfte über 730 € – du musst eine Einkommensteuererklärung (E1) abgeben (Frist: 30. April, elektronisch 30. Juni des Folgejahres).");
   if (e1)
@@ -427,18 +436,29 @@ export function calculate(input: TaxCase): TaxResult {
 
   /* ---- Kapitalerträge: Verlustausgleich und Regelbesteuerungsoption (§27 Abs 8, §27a Abs 5) ---- */
   const k = input.kapital;
-  const verlustAusgl = cents(Math.min(k.verluste275, k.ertraege275));
+  // Verluste zuerst mit Erträgen ohne KESt-Abzug verrechnen (dort spart man die volle Sondersteuer), dann mit KESt-pflichtigen Erträgen.
+  const verlustGegenOhne = cents(Math.min(k.verluste275, k.ohneKest275));
+  const ohneNetto = cents(k.ohneKest275 - verlustGegenOhne);
+  const verlustAusgl = cents(Math.min(k.verluste275 - verlustGegenOhne, k.ertraege275));
   const netto275 = cents(k.ertraege275 - verlustAusgl);
-  const kapitalSumme = cents(netto275 + k.ertraege25);
+  const kapitalSumme = cents(netto275 + k.ertraege25 + ohneNetto);
+  // Sondersteuer 27,5 % für Erträge ohne KESt-Abzug: wird mit der Veranlagung bezahlt (§ 27a Abs 1, § 42 Abs 1 Z 4)
+  const sondersteuerOhneKest = cents(ohneNetto * 0.275);
+  if (k.ohneKest275 > 0) {
+    weitere.push({ label: "Kapitalerträge ohne KESt-Abzug (Sondersteuersatz 27,5 %)", amount: ohneNetto, hint: verlustGegenOhne ? `nach Verrechnung von Verlusten ${eur(verlustGegenOhne)} €` : undefined });
+    formular.push({ formular: "E1kv", kz: "—", label: "Kapitalerträge/Kryptowährungen ohne KESt-Abzug (Beilage E1kv)", value: `€ ${eur(ohneNetto)}` });
+    if (k.ohneKest275 > 22) pflicht.push("Kapitalerträge ohne KESt-Abzug über 22 € (z. B. ausländisches Depot, Krypto-Börse im Ausland) – Einkommensteuererklärung E1 mit Beilage E1kv ist Pflicht.");
+  }
   let kapitalErstattung = 0;
   let kapitalOption: TaxResult["kapitalOption"] = null;
-  if (k.ertraege275 + k.ertraege25 > 0) {
+  if (k.ertraege275 + k.ertraege25 + k.ohneKest275 > 0) {
     // A) nur Verlustausgleichsoption: KESt neu berechnen (Sparbuchzinsen sind nicht ausgleichsfähig)
     const refundA = verlustAusgl > 0 ? cents(k.kestBezahlt - (netto275 * 0.275 + k.ertraege25 * 0.25)) : 0;
     // B) Regelbesteuerungsoption (inkl. Verlustausgleich): Erträge zum Tarif
     const regel = steuerAus(einkommen + kapitalSumme, false);
     const mehrsteuer = cents(regel.steuer - steuer);
-    const refundB = cents(k.kestBezahlt - mehrsteuer);
+    // Bei Regelbesteuerung entfällt auch die Sondersteuer auf Erträge ohne KESt-Abzug
+    const refundB = cents(k.kestBezahlt + sondersteuerOhneKest - mehrsteuer);
     const best = Math.max(refundA, refundB);
     const empfohlen = best >= 1;
     kapitalOption = { empfohlen, erstattung: empfohlen ? best : 0, mehrsteuer, verlustausgleich: verlustAusgl };
@@ -449,13 +469,13 @@ export function calculate(input: TaxCase): TaxResult {
         label: regelBesser ? "KESt-Gutschrift (Regelbesteuerungsoption)" : "KESt-Gutschrift (Verlustausgleich)",
         amount: best,
         hint: regelBesser
-          ? `KESt ${eur(k.kestBezahlt)} € − Steuer nach Tarif ${eur(Math.max(0, mehrsteuer))} €${verlustAusgl > 0 ? `, Verluste ${eur(verlustAusgl)} € verrechnet` : ""}`
+          ? `KESt ${eur(k.kestBezahlt)} €${sondersteuerOhneKest ? ` + Sondersteuer ${eur(sondersteuerOhneKest)} €` : ""} − Steuer nach Tarif ${eur(Math.max(0, mehrsteuer))} €${verlustAusgl > 0 ? `, Verluste ${eur(verlustAusgl)} € verrechnet` : ""}`
           : `Verluste ${eur(verlustAusgl)} € mit Erträgen verrechnet`,
       });
       if (regelBesser) formular.push({ formular: "E1kv", kz: "—", label: "Regelbesteuerungsoption für Kapitalerträge ausüben (E1 mit Beilage E1kv)", value: `€ ${eur(kapitalSumme)} Erträge` });
       if (verlustAusgl > 0) formular.push({ formular: "E1kv", kz: "—", label: "Verlustausgleichsoption ausüben (Verluste über mehrere Depots)", value: `€ ${eur(verlustAusgl)}` });
       hinweise.push("Die Optionen gelten für alle Kapitalerträge mit Sondersteuersatz. Vermittelst du jemandem den Alleinverdienerabsetzbetrag, kann die Erstattung entfallen.");
-    } else if (k.ertraege275 + k.ertraege25 > 0) {
+    } else if (k.ertraege275 + k.ertraege25 > 0 && k.ohneKest275 === 0) {
       hinweise.push("Regelbesteuerungs- und Verlustausgleichsoption bringen dir bei den Kapitalerträgen nichts – die KESt bleibt endgültig.");
     }
   }
@@ -532,8 +552,10 @@ export function calculate(input: TaxCase): TaxResult {
     }
   }
 
-  const est = cents(steuer + steuerSonst);
+  const est = cents(steuer + steuerSonst + sondersteuerOhneKest);
   const lst = cents(lz.reduce((a, x) => a + x.kz260, 0));
+  // Sondersteuer auf Erträge ohne KESt-Abzug ist in der Einkommensteuer enthalten. Bei Regelbesteuerung ist sie in der
+  // KESt-Gutschrift (refundB) gegengerechnet, sodass im Ergebnis nur die Tarifsteuer bleibt.
   const erstattung = cents(lst - est + kapitalErstattung - immoNachzahlung);
 
   /* ---- Steuersätze ---- */

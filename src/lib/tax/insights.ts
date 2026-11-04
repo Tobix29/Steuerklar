@@ -46,7 +46,7 @@ export function insights(c: TaxCase, base: TaxResult = calculate(c)): Insights {
     ["behinderung", "Behinderung (Pauschbeträge)", { behinderungGrad: 0, behinderungKfz: false }],
     ["unterhalt", "Unterhaltsabsetzbetrag", { unterhaltKinder: [] }],
     ["pension", "Erhöhter Pensionistenabsetzbetrag", { pensionErhoeht: false }],
-    ["kapital", "KESt-Gutschrift (Regelbesteuerung)", { kapital: { ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0 } }],
+    ["kapital", "KESt-Gutschrift (Regelbesteuerung)", { kapital: { ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0, ohneKest275: 0 } }],
   ];
   const contributions: Contribution[] = [];
   for (const [key, label, patch] of variants) {

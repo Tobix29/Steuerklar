@@ -186,8 +186,19 @@ export const TaxCaseSchema = z.object({
       kestBezahlt: optMoney,
       /** Realisierte Verluste (Aktien, Fonds …), die die Bank nicht schon verrechnet hat – z. B. bei mehreren Depots */
       verluste275: optMoney,
+      /** Erträge mit 27,5 % ohne KESt-Abzug: ausländisches Depot, Kryptowährungen (Neuvermögen) an ausländischen Börsen, Staking */
+      ohneKest275: optMoney,
     })
-    .default({ ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0 }),
+    .default({ ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0, ohneKest275: 0 }),
+  /** Sonstige Einkünfte (§ 29 EStG) */
+  sonstige: z
+    .object({
+      /** Spekulationsgeschäfte (§ 31): Verkauf von Gold, Kunst, Sammlerstücken … innerhalb eines Jahres nach Kauf */
+      spekulation: optMoney,
+      /** Gelegentliche Leistungen (§ 29 Z 3): Vermittlungsprovisionen, gelegentliche Vermietung von Auto, Gegenständen … */
+      leistungen: optMoney,
+    })
+    .default({ spekulation: 0, leistungen: 0 }),
   /** Ausländische Einkünfte (Formular L1i bzw. E1) */
   ausland: z
     .array(

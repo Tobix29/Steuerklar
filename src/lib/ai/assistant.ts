@@ -56,6 +56,7 @@ export function caseContext(c: TaxCase, r: TaxResult): string {
     pensionErhoehtBeantragt: c.pensionErhoeht,
     unterhaltKinder: c.unterhaltKinder.map((k) => ({ monate: k.months })),
     kapital: c.kapital,
+    sonstigeEinkuenfte: c.sonstige,
     ams: c.ams.betrag > 0 ? { ...c.ams, hochrechnung: r.ams } : undefined,
     kapitalOption: r.kapitalOption,
     vermietung: c.mietobjekte.map((o) => ({ einnahmen: o.einnahmen, anschaffungskosten: o.anschaffungskosten, anschaffungsjahr: o.anschaffungsjahr, zinsen: o.zinsen })),

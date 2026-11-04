@@ -398,3 +398,6 @@ export function fristen(year: number, today = new Date()) {
   const daysLeft = Math.ceil((antrag.getTime() - today.getTime()) / 86_400_000);
   return { antrag, pflicht, yearEnded, daysLeft, expired: daysLeft < 0, urgent: daysLeft >= 0 && daysLeft <= 90 };
 }
+
+/** Freigrenzen für sonstige Einkünfte (§ 31 Abs 3 und § 29 Z 3 EStG). */
+export const SONSTIGE = { spekulationFreigrenze: 440, leistungenFreigrenze: 220 };

@@ -158,11 +158,16 @@ export default function Profil() {
         <MoneyRow label="Zinsen mit 25 % KESt" sublabel="Sparbuch, Festgeld" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
         <MoneyRow
           label="Verluste aus anderen Depots"
-          sublabel="Kursverluste, die die Bank nicht verrechnet hat"
+          sublabel="Kursverluste (auch Krypto), die die Bank nicht verrechnet hat"
           value={data.kapital.verluste275}
           onChange={(v) => set((d) => void (d.kapital.verluste275 = v))}
         />
+        <MoneyRow label="Erträge ohne KESt-Abzug" sublabel="Ausländisches Depot, Krypto an ausländischen Börsen, Staking" value={data.kapital.ohneKest275} onChange={(v) => set((d) => void (d.kapital.ohneKest275 = v))} />
         <MoneyRow label="Bereits abgezogene KESt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
+      </Section>
+      <Section title="Sonstige Einkünfte" footer="Freigrenzen: Wird die Grenze überschritten, ist der ganze Betrag steuerpflichtig. Neben dem Gehalt bleiben Nebeneinkünfte bis 730 € trotzdem steuerfrei.">
+        <MoneyRow label="Spekulationsgeschäfte" sublabel="Gold, Kunst, Sammlerstücke binnen 1 Jahr – frei bis 440 €" value={data.sonstige.spekulation} onChange={(v) => set((d) => void (d.sonstige.spekulation = v))} />
+        <MoneyRow label="Gelegentliche Leistungen" sublabel="Provisionen, gelegentliche Vermietung – frei bis 220 €" value={data.sonstige.leistungen} onChange={(v) => set((d) => void (d.sonstige.leistungen = v))} />
       </Section>
 
       <WeitereEinkuenfte data={data} set={set} year={year} />
