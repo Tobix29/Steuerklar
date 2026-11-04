@@ -56,6 +56,7 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 |---|---|
 | Erklärung | L1, L1k, L1i, E1, E1a, E1b, E1kv, U1 – Kennzahlen als Ausfüllhilfe, PDF |
 | Belege | Foto/PDF → KI erkennt Lohnzettel und Rechnungen; Kontoauszug-Import findet Absetzbares |
+| Buchhaltung | Einnahmen-Ausgaben-Journal (`/app/buchhaltung`): Beleg fotografieren → KI schlägt Kategorie, Netto, Vorsteuer vor; Privatanteil, Bewirtung 50 %, Zufluss-Abfluss; Summen fließen in E1a/U1; CSV-Export |
 | Optimierung | Spar-Check, Regelbesteuerungs-/Verlustausgleichsoption, Gewinnfreibeträge, Anlagenverzeichnis (AfA, GWG, Pkw) |
 | Planung | Rücklagen-Planer: ESt-Vorauszahlungen, SVS-Beiträge, UVA-Zahllast; alle Termine als Kalender (`/api/calendar?alle=1`) |
 | Nach der Abgabe | **Bescheid prüfen** (`/api/finanzamt/bescheid`): Bescheid auslesen, mit eigener Berechnung vergleichen, Beschwerde-Entwurf nach §§ 243/250 BAO mit Frist (§ 245 BAO, § 108 BAO inkl. Feiertage) und ggf. Aussetzungsantrag (§ 212a BAO) |
@@ -77,7 +78,7 @@ Finanzstrafverfahren, Haftung für die Richtigkeit. Die App weist bei solchen Sc
 3. **Vereinfachungen:** Kindermehrbetrag vereinfacht; einzelne Pensions-Höchstbeträge geschätzt (siehe `unverified`); SVS-Werte
    (Beitragssätze, Mindest-/Höchstbeitragsgrundlage) und UVA-Grenzen in `SVS`/`UVA` jährlich prüfen.
    Nicht abgedeckt: Jahressechstel-Überschreitung, Bilanzierung (doppelte Buchhaltung), GmbH/Körperschaftsteuer, Lohnverrechnung
-   für Dienstnehmer:innen, E1a-Einzelkennzahlen (nur Gewinnsumme).
+   für Dienstnehmer:innen. E1a-Kennzahlen sind nur für Erlöse (9040), Waren (9100), Fremdleistungen (9110) und Personal (9120) hinterlegt – die übrigen ändert das BMF je Jahr und müssen gegen das Formular geprüft werden.
 
 4. **Übermittlung:** Eine direkte Abgabe in FinanzOnline durch Drittsoftware ist für Privatpersonen nicht vorgesehen – die App liefert
    eine Ausfüllhilfe mit Kennzahlen. Option: Kooperation mit Steuerberatungskanzlei (Vollmacht) für die Übermittlung.
