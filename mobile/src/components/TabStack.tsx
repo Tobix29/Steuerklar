@@ -3,7 +3,7 @@ import Stack from "expo-router/stack";
 import { useColors } from "~/lib/theme";
 
 /** Stack je Tab mit nativem großen Titel (iOS) und durchscheinendem Header. */
-export function TabStack({ title }: { title: string }) {
+export function TabStack({ title, screens = {} }: { title: string; screens?: Record<string, string> }) {
   const c = useColors();
   const ios = Platform.OS === "ios";
   // Web dient nur als Vorschau: dort liegt die Tab-Leiste oben über dem Header → eigenen Titel im Inhalt anzeigen
@@ -26,6 +26,9 @@ export function TabStack({ title }: { title: string }) {
       }}
     >
       <Stack.Screen name="index" options={{ title }} />
+      {Object.entries(screens).map(([name, t]) => (
+        <Stack.Screen key={name} name={name} options={{ title: t, headerLargeTitleEnabled: false }} />
+      ))}
     </Stack>
   );
 }

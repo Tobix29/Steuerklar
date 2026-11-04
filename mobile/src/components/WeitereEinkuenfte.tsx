@@ -1,10 +1,12 @@
 import { router } from "expo-router";
+import { Fragment } from "react";
 import { Text, View } from "react-native";
 import { Button, ChoiceRow, MoneyRow, NumberRow, Row, Section, Segmented, SwitchRow, TextRow } from "~/components/ui";
 import { eur, uid } from "~/lib/format";
 import { useColors } from "~/lib/theme";
+import { gwgGrenze } from "@core/tax/constants";
 import { YEAR_PARAMS, type Betrieb, type Mietobjekt, type TaxCase, type TaxYear } from "~/lib/types";
-import { betrieb, gebaeudeAfa, vermietung } from "@core/tax/einkuenfte";
+import { anlageAfa, betrieb, gebaeudeAfa, vermietung } from "@core/tax/einkuenfte";
 
 const neuesObjekt = (year: number): Mietobjekt => ({
   id: uid(), bezeichnung: "", einnahmen: 0, anschaffungskosten: 0, grundanteil: 20, anschaffungsjahr: year - 5, anschaffungsmonat: 1,
@@ -12,7 +14,7 @@ const neuesObjekt = (year: number): Mietobjekt => ({
 });
 
 const neuerBetrieb = (): Betrieb => ({
-  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0,
+  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0, anlagen: [],
 });
 
 /** Vermietung (E1b) und Selbständig/Gewerbe (E1a) inkl. Instandsetzungen und Umsatzsteuer. */
@@ -82,7 +84,8 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
         const r = betrieb(b, p);
         const upd = (fn: (x: Betrieb) => void) => set((d) => fn(d.betriebe[i]!));
         return (
-          <Section key={b.id} title={`💼 Selbständig / Gewerbe ${i + 1}`} footer={r.hinweise.join(" ") || undefined}>
+          <Fragment key={b.id}>
+          <Section title={`💼 Selbständig / Gewerbe ${i + 1}`} footer={r.hinweise.join(" ") || undefined}>
             <TextRow label="Bezeichnung" value={b.bezeichnung} placeholder="z. B. Grafikdesign" onChangeText={(v) => upd((x) => void (x.bezeichnung = v.slice(0, 200)))} />
             <View style={{ padding: 12 }}>
               <Segmented value={b.art} onChange={(v) => upd((x) => void (x.art = v))} options={[{ value: "selbstaendig", label: "Selbständig" }, { value: "gewerbe", label: "Gewerbe" }]} />
@@ -119,9 +122,40 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                 onChange={(v) => upd((x) => void (x.investitionen = v))}
               />
             )}
+            {b.gewinnermittlung === "ear" && (
+              <Row
+                label="+ Wirtschaftsgut (Anlagenverzeichnis)"
+                sublabel={`Laptop, Möbel, Auto … über ${eur(gwgGrenze(year), 0)} über die Nutzungsdauer abschreiben, darunter sofort`}
+                onPress={() => upd((x) => void x.anlagen.push({ id: uid(), bezeichnung: "", anschaffungsjahr: year, anschaffungsmonat: 1, kosten: 0, nutzungsdauer: 3, privatanteil: 0, pkw: false }))}
+              />
+            )}
             <Row label={`Gewinn ${year}`} sublabel="nach Gewinnfreibetrag" value={eur(r.gewinn)} strong />
             <Row label="Entfernen" destructive onPress={() => set((d) => void d.betriebe.splice(i, 1))} />
           </Section>
+          {b.gewinnermittlung === "ear" &&
+            b.anlagen.map((a, j) => {
+              const afa = anlageAfa(a, year);
+              const ua = (fn: (x: Betrieb["anlagen"][number]) => void) => upd((x) => fn(x.anlagen[j]!));
+              return (
+                <Section key={a.id} title={`🖥️ Wirtschaftsgut ${j + 1}${b.bezeichnung ? ` · ${b.bezeichnung}` : ""}`}>
+                  <TextRow label="Bezeichnung" value={a.bezeichnung} placeholder="z. B. Laptop" onChangeText={(v) => ua((x) => void (x.bezeichnung = v.slice(0, 200)))} />
+                  <MoneyRow label="Anschaffungskosten" sublabel="netto" value={a.kosten} onChange={(v) => ua((x) => void (x.kosten = v))} />
+                  <NumberRow label="Anschaffungsjahr" value={a.anschaffungsjahr} max={2100} onChange={(v) => ua((x) => void (x.anschaffungsjahr = Math.max(1990, v)))} />
+                  <NumberRow label="Anschaffungsmonat" sublabel="ab Juli: Halbjahres-AfA" value={a.anschaffungsmonat} max={12} onChange={(v) => ua((x) => void (x.anschaffungsmonat = Math.min(12, Math.max(1, v))))} />
+                  <NumberRow label="Nutzungsdauer" value={a.nutzungsdauer} max={50} suffix="Jahre" onChange={(v) => ua((x) => void (x.nutzungsdauer = Math.max(1, v)))} />
+                  <NumberRow label="Privatanteil" value={a.privatanteil} max={100} suffix="%" onChange={(v) => ua((x) => void (x.privatanteil = v))} />
+                  <SwitchRow label="Pkw" sublabel="max. 40.000 € absetzbar, mind. 8 Jahre" value={a.pkw} onValueChange={(v) => ua((x) => void (x.pkw = v))} />
+                  <Row
+                    label={`AfA ${year}`}
+                    sublabel={afa.gwg ? "sofort abgeschrieben (GWG)" : `Restwert ${eur(afa.restwert)}`}
+                    value={eur(afa.afa * (1 - a.privatanteil / 100))}
+                    strong
+                  />
+                  <Row label="Entfernen" destructive onPress={() => upd((x) => void x.anlagen.splice(j, 1))} />
+                </Section>
+              );
+            })}
+          </Fragment>
         );
       })}
 

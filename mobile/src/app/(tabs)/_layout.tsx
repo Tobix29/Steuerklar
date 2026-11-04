@@ -1,6 +1,7 @@
 import { NativeTabs } from "expo-router/native-tabs";
 import { useColors } from "~/lib/theme";
 
+/** Android (Material) erlaubt höchstens 5 Tabs → Finanzamt, Fragen und Konto liegen unter „Mehr“. */
 export default function TabsLayout() {
   const c = useColors();
   return (
@@ -21,17 +22,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Ergebnis</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} md="bar_chart" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="fragen">
-        <NativeTabs.Trigger.Label>Fragen</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} md="chat" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="finanzamt">
-        <NativeTabs.Trigger.Label>Finanzamt</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: "building.columns", selected: "building.columns.fill" }} md="account_balance" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="konto">
-        <NativeTabs.Trigger.Label>Konto</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} md="settings" />
+      <NativeTabs.Trigger name="mehr">
+        <NativeTabs.Trigger.Label>Mehr</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: "ellipsis.circle", selected: "ellipsis.circle.fill" }} md="more_horiz" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
