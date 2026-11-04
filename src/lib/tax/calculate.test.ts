@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avabBetrag, calculate, pendlerFaktor, pendlerpauschale, selbstbehalt, steuerSonstigeBezuege, tarifsteuer, verkehrsabsetzbetrag } from "./calculate";
+import { avabBetrag, behinderungPauschbetrag, calculate, pendlerFaktor, pendlerpauschale, selbstbehalt, steuerSonstigeBezuege, tarifsteuer, verkehrsabsetzbetrag } from "./calculate";
 import { SUPPORTED_YEARS, YEAR_PARAMS } from "./constants";
 import { TaxCaseSchema } from "./types";
 
@@ -140,5 +140,26 @@ describe("calculate() – Arbeitnehmerveranlagung", () => {
   it("weist ungültige Eingaben zurück", () => {
     expect(() => TaxCaseSchema.parse({ year: 2019 })).toThrow();
     expect(() => base({ bundesland: "BY" })).toThrow();
+  });
+
+  it("Behinderung: Pauschbetrag ohne Selbstbehalt", () => {
+    expect(behinderungPauschbetrag(24)).toBe(0);
+    expect(behinderungPauschbetrag(50)).toBe(401);
+    expect(behinderungPauschbetrag(100)).toBe(1198);
+    const r = calculate(base({ behinderungGrad: 50 }));
+    expect(r.aussergewoehnlicheBelastungenSumme).toBe(401);
+    expect(r.erstattung).toBeCloseTo(401 * 0.3, 0);
+  });
+
+  it("Auswärtige Berufsausbildung: 110 € pro Monat", () => {
+    const r = calculate(base({ children: [{ id: "k", birthYear: 2006, months: 12, auswaertigeAusbildungMonate: 10 }] }));
+    expect(r.aussergewoehnlicheBelastungen.find((l) => l.label.startsWith("Auswärtige"))?.amount).toBe(1100);
+  });
+
+  it("Familienheimfahrten sind gedeckelt, doppelte Haushaltsführung unter KZ 723", () => {
+    const r = calculate(base({ familienheimfahrten: 5000, doppelteHaushaltsfuehrung: 4800 }));
+    expect(r.werbungskosten.find((l) => l.kz === "300")?.amount).toBe(3672);
+    expect(r.werbungskosten.find((l) => l.kz === "723")?.amount).toBe(4800);
+    expect(r.formular.some((f) => f.kz === "300") && r.formular.some((f) => f.kz === "723")).toBe(true);
   });
 });

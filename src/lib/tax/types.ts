@@ -48,6 +48,8 @@ export const ChildSchema = z.object({
   months: z.number().int().min(0).max(12).default(12),
   /** Anteil Familienbonus Plus: 1 = ganz, 0.5 = Aufteilung mit dem anderen Elternteil */
   familienbonusShare: z.union([z.literal(1), z.literal(0.5)]).default(1),
+  /** Monate einer Berufsausbildung außerhalb des Wohnorts (kein Ausbildungsort im Umkreis von 80 km) */
+  auswaertigeAusbildungMonate: z.number().int().min(0).max(12).default(0),
 });
 export type Child = z.infer<typeof ChildSchema>;
 
@@ -71,11 +73,19 @@ export const TaxCaseSchema = z.object({
   /** Ergonomisch geeignetes Mobiliar (KZ 158) */
   mobiliar: optMoney,
   werbungskosten: z.array(ExpenseSchema).max(200).default([]),
+  /** Kosten der Zweitwohnung am Arbeitsort (KZ 723) */
+  doppelteHaushaltsfuehrung: optMoney,
+  /** Fahrten zum Familienwohnsitz (KZ 300), gedeckelt mit dem höchsten Pendlerpauschale */
+  familienheimfahrten: optMoney,
 
   /** Sonderausgaben */
   kirchenbeitrag: optMoney,
   spenden: z.array(ExpenseSchema).max(200).default([]),
   steuerberatung: z.array(ExpenseSchema).max(50).default([]),
+
+  /** Grad der Behinderung in % (ab 25 % Pauschbetrag) und Kfz-Freibetrag bei Gehbehinderung */
+  behinderungGrad: z.number().int().min(0).max(100).default(0),
+  behinderungKfz: z.boolean().default(false),
 
   /** Außergewöhnliche Belastungen mit Selbstbehalt */
   krankheitskosten: z.array(ExpenseSchema).max(200).default([]),

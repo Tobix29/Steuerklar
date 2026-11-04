@@ -147,6 +147,29 @@ export const SONSTIGE_BEZUEGE = {
   ],
 };
 
+/** Pauschbeträge bei Behinderung (§35 Abs 3 EStG), Jahresbeträge nach Grad der Behinderung. */
+export const BEHINDERUNG_PAUSCHBETRAG = [
+  { from: 95, amount: 1198 },
+  { from: 85, amount: 837 },
+  { from: 75, amount: 718 },
+  { from: 65, amount: 599 },
+  { from: 55, amount: 486 },
+  { from: 45, amount: 401 },
+  { from: 35, amount: 164 },
+  { from: 25, amount: 124 },
+];
+
+/** Weitere Pauschalen ohne Selbstbehalt (VO über außergewöhnliche Belastungen, §34 Abs 8 EStG). */
+export const AGB_PAUSCHALEN = {
+  /** Freibetrag für eigenes Kfz bei Gehbehinderung, je Monat (zu verifizieren) */
+  kfzBehinderungMonat: 190,
+  /** Auswärtige Berufsausbildung eines Kindes, je Monat (zu verifizieren) */
+  auswaertigeAusbildungMonat: 110,
+};
+
+/** Stammt nicht aus Primärquellen geprüft – vor Produktivbetrieb verifizieren (gilt jahresübergreifend). */
+export const UNVERIFIED_GLOBAL = ["AGB_PAUSCHALEN.kfzBehinderungMonat", "AGB_PAUSCHALEN.auswaertigeAusbildungMonat"];
+
 /** Selbstbehalt bei außergewöhnlichen Belastungen (§34 Abs 4 EStG) */
 export const SELBSTBEHALT = [
   { upTo: 7300, rate: 0.06 },

@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { eur, pct } from "@/lib/client/api";
 import type { Line } from "@/lib/tax/types";
+import { insights } from "@/lib/tax/insights";
+import Link from "next/link";
 import { useCase } from "../CaseContext";
 
 function Lines({ items }: { items: Line[] }) {
@@ -33,10 +35,12 @@ function Item({ label, value, strong, hint }: { label: string; value: string; st
 }
 
 export default function Ergebnis() {
-  const { result: r, year } = useCase();
+  const { result: r, year, data } = useCase();
   const [confirmed, setConfirmed] = useState(false);
-  if (!r) return <div className="shimmer" style={{ height: 400, borderRadius: 18 }} />;
+  if (!r || !data) return <div className="shimmer" style={{ height: 400, borderRadius: 18 }} />;
   const hasIncome = r.laufendeBezuege > 0;
+  const spar = hasIncome ? insights(data, r) : null;
+  const maxEffect = Math.max(1, ...(spar?.contributions.map((c) => c.effect) ?? [1]));
 
   return (
     <div className="stack fade-in" style={{ "--gap": "28px" } as React.CSSProperties}>
@@ -59,6 +63,35 @@ export default function Ergebnis() {
         </div>
         {r.provisional && <p className="tiny muted" style={{ marginTop: 14 }}>Prognose – einzelne Parameter für {year} sind noch nicht amtlich verifiziert.</p>}
       </section>
+
+      {spar && (spar.contributions.length > 0 || spar.tips.length > 0) && (
+        <section className="stack" style={{ "--gap": "10px" } as React.CSSProperties} id="spar-check">
+          <h2 className="title-2">Spar-Check</h2>
+          {spar.contributions.length > 0 && (
+            <div className="list">
+              {spar.contributions.map((c) => (
+                <div className="list-item" key={c.key} style={{ flexWrap: "wrap", rowGap: 6 }}>
+                  <span className="grow">{c.label}</span>
+                  <span className="value refund" style={{ fontWeight: 600 }}>+ {eur(c.effect)}</span>
+                  <div className="progress" style={{ flexBasis: "100%", height: 4 }}>
+                    <div style={{ width: `${(c.effect / maxEffect) * 100}%`, background: "var(--green)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {spar.tips.map((t) => (
+            <div key={t.key} className="notice notice-blue small">
+              <span>{t.icon}</span>
+              <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
+                <strong>{t.title}</strong>
+                <span>{t.text}</span>
+                {t.href && <Link href={t.href}>Jetzt anpassen ›</Link>}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>
         <h2 className="title-2">So trägst du es in FinanzOnline ein</h2>

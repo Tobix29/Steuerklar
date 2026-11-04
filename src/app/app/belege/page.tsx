@@ -204,7 +204,9 @@ function DocumentCard({
 }) {
   const [ex, setEx] = useState<Extraction>(doc.extraction);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setEx(doc.extraction), [doc.extraction]);
+  useEffect(() => {
+    setEx(doc.extraction);
+  }, [doc.extraction]);
 
   const t = DOCUMENT_TYPES[ex.documentType];
   const mainAmount = ex.documentType === "lohnzettel" ? ex.lohnzettel?.kz210 : ex.beleg ? belegAmount(ex) : null;

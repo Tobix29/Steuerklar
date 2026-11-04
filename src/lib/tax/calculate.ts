@@ -10,7 +10,7 @@
  * Nicht abgedeckt (→ Hinweis): Selbständige, Vermietung, Kapitalerträge, Pensionen,
  * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
-import { SELBSTBEHALT, SONSTIGE_BEZUEGE, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
+import { AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
 import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -76,6 +76,10 @@ export function selbstbehalt(basis: number, reductionPoints: number): number {
   return cents(Math.max(0, basis) * rate);
 }
 
+export function behinderungPauschbetrag(grad: number): number {
+  return BEHINDERUNG_PAUSCHBETRAG.find((s) => grad >= s.from)?.amount ?? 0;
+}
+
 export function avabBetrag(kids: number, p: YearParams): number {
   if (kids <= 0) return 0;
   if (kids === 1) return p.avab.oneChild;
@@ -139,18 +143,27 @@ export function calculate(input: TaxCase): TaxResult {
   // Pendler, Telearbeit und Mobiliar werden ohne Anrechnung auf die Werbungskostenpauschale berücksichtigt.
   const ohneAnrechnung = sum(wk);
 
+  const kzLabels: Record<string, string> = Object.fromEntries(Object.values(WK_KATEGORIEN).map((c) => [c.kz, c.label]));
+  kzLabels["723"] = "Doppelte Haushaltsführung";
+  kzLabels["300"] = "Familienheimfahrten";
   const byKz = new Map<string, number>();
   for (const w of input.werbungskosten) {
     const cat = WK_KATEGORIEN[w.category ?? "sonstige"];
     byKz.set(cat.kz, cents((byKz.get(cat.kz) ?? 0) + w.amount));
   }
+  if (input.doppelteHaushaltsfuehrung > 0) byKz.set("723", cents(input.doppelteHaushaltsfuehrung));
+  if (input.familienheimfahrten > 0) {
+    const cap = p.pendlerGross.from60;
+    byKz.set("300", cents(Math.min(input.familienheimfahrten, cap)));
+    if (input.familienheimfahrten > cap) hinweise.push(`Familienheimfahrten sind mit dem höchsten Pendlerpauschale (${eur(cap)} €) gedeckelt.`);
+  }
   const sonstigeWk = cents([...byKz.values()].reduce((a, b) => a + b, 0));
   const pauschale = hasEmployment ? p.werbungskostenpauschale : 0;
   if (sonstigeWk > pauschale) {
     for (const [kz, amount] of byKz) {
-      const cat = Object.values(WK_KATEGORIEN).find((c) => c.kz === kz)!;
-      wk.push({ label: cat.label, amount, kz });
-      formular.push({ formular: "L1", kz, label: cat.label, value: `€ ${eur(amount)}` });
+      const label = kzLabels[kz] ?? "Werbungskosten";
+      wk.push({ label, amount, kz });
+      formular.push({ formular: "L1", kz, label, value: `€ ${eur(amount)}` });
     }
   } else if (pauschale > 0) {
     wk.push({ label: "Werbungskostenpauschale", amount: pauschale, hint: sonstigeWk > 0 ? `deine Ausgaben (${eur(sonstigeWk)} €) liegen darunter` : "automatisch berücksichtigt" });
@@ -192,6 +205,24 @@ export function calculate(input: TaxCase): TaxResult {
     agb.push({ label: "Krankheitskosten nach Selbstbehalt", amount: abziehbar, kz: "730", hint: `Selbstbehalt: ${eur(sb)} €` });
     formular.push({ formular: "L1", kz: "730", label: "Krankheitskosten (vor Selbstbehalt)", value: `€ ${eur(krank)}` });
     if (abziehbar === 0) hinweise.push("Deine Krankheitskosten liegen unter dem Selbstbehalt und wirken sich nicht aus.");
+  }
+  // Ohne Selbstbehalt: Behinderung (§35) und auswärtige Berufsausbildung (§34 Abs 8)
+  const pb = behinderungPauschbetrag(input.behinderungGrad);
+  if (pb > 0) {
+    agb.push({ label: `Pauschbetrag Behinderung (${input.behinderungGrad} %)`, amount: pb, hint: "ohne Selbstbehalt" });
+    formular.push({ formular: "L1", kz: "—", label: "Behinderung: Grad der Behinderung eintragen (Pauschbetrag wird automatisch angesetzt)", value: `${input.behinderungGrad} %` });
+  } else if (input.behinderungGrad > 0) hinweise.push("Ein Pauschbetrag für Behinderung steht erst ab einem Grad von 25 % zu.");
+  if (input.behinderungKfz) {
+    if (input.behinderungGrad < 50) hinweise.push("Der Kfz-Freibetrag setzt eine Gehbehinderung (Ausweis/Eintrag „Unzumutbarkeit öffentlicher Verkehrsmittel“) voraus – bitte prüfen.");
+    const kfz = AGB_PAUSCHALEN.kfzBehinderungMonat * 12;
+    agb.push({ label: "Freibetrag eigenes Kfz (Gehbehinderung)", amount: kfz, hint: `${AGB_PAUSCHALEN.kfzBehinderungMonat} € pro Monat, ohne Selbstbehalt` });
+    formular.push({ formular: "L1", kz: "—", label: "Behinderung: Freibetrag für ein eigenes Kfz beantragen", value: "ja" });
+  }
+  const ausbildung = input.children.reduce((a, c) => a + c.auswaertigeAusbildungMonate, 0);
+  if (ausbildung > 0) {
+    const amount = ausbildung * AGB_PAUSCHALEN.auswaertigeAusbildungMonat;
+    agb.push({ label: "Auswärtige Berufsausbildung (Kinder)", amount, hint: `${ausbildung} Monate × ${AGB_PAUSCHALEN.auswaertigeAusbildungMonat} €` });
+    formular.push({ formular: "L1k", kz: "—", label: "Auswärtige Berufsausbildung beantragen", value: `${ausbildung} Monate` });
   }
   const agbSumme = sum(agb);
   const einkommen = Math.max(0, cents(einkommenVorAgb - agbSumme));
@@ -269,7 +300,7 @@ export function calculate(input: TaxCase): TaxResult {
   return {
     year,
     provisional: p.unverified.length > 0,
-    unverified: p.unverified,
+    unverified: [...p.unverified, ...UNVERIFIED_GLOBAL],
     laufendeBezuege: laufend,
     sonstigeBezuege: sonstige,
     steuerSonstigeBezuege: steuerSonst,

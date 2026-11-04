@@ -10,6 +10,7 @@ const NAV = [
   { href: "/app/profil", label: "Über dich", icon: "👤" },
   { href: "/app/belege", label: "Belege", icon: "📸" },
   { href: "/app/ergebnis", label: "Ergebnis", icon: "📊" },
+  { href: "/app/assistent", label: "Fragen", icon: "💬" },
   { href: "/app/konto", label: "Konto", icon: "⚙️" },
 ];
 

@@ -1,8 +1,8 @@
 "use client";
 import { MoneyInput, NumberInput, Segmented, Toggle } from "@/components/ui";
 import { eur, uid } from "@/lib/client/api";
-import { BUNDESLAENDER, WK_KATEGORIEN, YEAR_PARAMS, type WkKategorie } from "@/lib/tax/constants";
-import { pendlerpauschale } from "@/lib/tax/calculate";
+import { AGB_PAUSCHALEN, BUNDESLAENDER, WK_KATEGORIEN, YEAR_PARAMS, type WkKategorie } from "@/lib/tax/constants";
+import { behinderungPauschbetrag, pendlerpauschale } from "@/lib/tax/calculate";
 import type { Expense, TaxCase } from "@/lib/tax/types";
 import { useCase } from "../CaseContext";
 
@@ -152,10 +152,38 @@ export default function Profil() {
         </div>
       </section>
 
+      <section>
+        <p className="section-label">Arbeiten fern von zu Hause</p>
+        <div className="list">
+          <Row label="Doppelte Haushaltsführung" help="Miete und Betriebskosten der Zweitwohnung am Arbeitsort, wenn der Familienwohnsitz weit entfernt ist (KZ 723)">
+            <MoneyInput ariaLabel="Doppelte Haushaltsführung" value={data.doppelteHaushaltsfuehrung} onChange={(v) => set((d) => void (d.doppelteHaushaltsfuehrung = v))} />
+          </Row>
+          <Row label="Familienheimfahrten" help={`Fahrten zum Familienwohnsitz, max. ${eur(p.pendlerGross.from60, 0)} pro Jahr (KZ 300)`}>
+            <MoneyInput ariaLabel="Familienheimfahrten" value={data.familienheimfahrten} onChange={(v) => set((d) => void (d.familienheimfahrten = v))} />
+          </Row>
+        </div>
+      </section>
+
+      <section>
+        <p className="section-label">Behinderung</p>
+        <div className="list">
+          <Row label="Grad der Behinderung" help={data.behinderungGrad >= 25 ? `Pauschbetrag ${eur(behinderungPauschbetrag(data.behinderungGrad), 0)} pro Jahr, ohne Selbstbehalt` : "Ab 25 % laut Bescheid des Sozialministeriumservice"}>
+            <NumberInput ariaLabel="Grad der Behinderung" value={data.behinderungGrad} max={100} suffix="%" onChange={(v) => set((d) => void (d.behinderungGrad = v))} />
+          </Row>
+          {data.behinderungGrad >= 25 && (
+            <Row label="Eigenes Kfz wegen Gehbehinderung" help={`Freibetrag ${AGB_PAUSCHALEN.kfzBehinderungMonat} € pro Monat (Eintrag „Unzumutbarkeit öffentlicher Verkehrsmittel“ im Behindertenpass)`}>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <Toggle label="Kfz-Freibetrag" checked={data.behinderungKfz} onChange={(v) => set((d) => void (d.behinderungKfz = v))} />
+              </div>
+            </Row>
+          )}
+        </div>
+      </section>
+
       <section className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
         <div className="row-between">
           <h2 className="title-2">Kinder & Familie</h2>
-          <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1 }))}>
+          <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1, auswaertigeAusbildungMonate: 0 }))}>
             + Kind hinzufügen
           </button>
         </div>
@@ -174,6 +202,11 @@ export default function Profil() {
             <Row label="Familienbonus Plus" help="Ganz oder je zur Hälfte mit dem anderen Elternteil">
               <Segmented label="Familienbonus" value={c.familienbonusShare} options={[{ value: 1, label: "Ganz" }, { value: 0.5, label: "Hälfte" }]} onChange={(v) => set((d) => void (d.children[i]!.familienbonusShare = v))} />
             </Row>
+            {year - c.birthYear >= 15 && (
+              <Row label="Auswärtige Berufsausbildung" help={`Monate mit Ausbildung außerhalb des Wohnorts (kein Ausbildungsort im Umkreis von 80 km) – ${AGB_PAUSCHALEN.auswaertigeAusbildungMonat} € pro Monat`}>
+                <NumberInput ariaLabel="Monate auswärtige Ausbildung" value={c.auswaertigeAusbildungMonate} max={12} suffix="Mon." onChange={(v) => set((d) => void (d.children[i]!.auswaertigeAusbildungMonate = v))} />
+              </Row>
+            )}
             <div className="list-item">
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--red)" }} onClick={() => set((d) => void d.children.splice(i, 1))}>Kind entfernen</button>
             </div>

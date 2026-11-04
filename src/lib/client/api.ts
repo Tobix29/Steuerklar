@@ -29,3 +29,37 @@ export const eur = (n: number, digits = 2) =>
 export const pct = (n: number) => `${(n * 100).toLocaleString("de-AT", { maximumFractionDigits: 1 })} %`;
 
 export const uid = () => crypto.randomUUID();
+
+/** Fragt den Steuerassistenten; `onText` bekommt jeweils die ganze bisherige Antwort. */
+export async function askAssistant(
+  messages: { role: "user" | "assistant"; content: string }[],
+  year: number,
+  onText: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await fetch("/api/assistant", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ year, messages }),
+    signal,
+  });
+  if (res.status === 401) {
+    window.location.href = "/anmelden?abgelaufen=1";
+    throw new ApiError(401, "Sitzung abgelaufen.");
+  }
+  if (!res.ok || !res.body) {
+    const data = res.headers.get("content-type")?.includes("application/json") ? await res.json() : null;
+    throw new ApiError(res.status, data?.error ?? "Der Assistent ist gerade nicht erreichbar.");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+    onText(text);
+  }
+  return text;
+}

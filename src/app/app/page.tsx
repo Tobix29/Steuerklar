@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { eur } from "@/lib/client/api";
+import { insights } from "@/lib/tax/insights";
 import { useCase } from "./CaseContext";
 
 export default function Overview() {
@@ -21,6 +22,7 @@ export default function Overview() {
   const refund = result.erstattung;
 
   const tips: { icon: string; text: string; href: string }[] = [];
+  if (hasIncome) for (const t of insights(data, result).tips.filter((t) => t.key !== "grenz").slice(0, 2)) tips.push({ icon: t.icon, text: t.title, href: "/app/ergebnis" });
   if (hasIncome && data.pendlerKm === 0) tips.push({ icon: "🚆", text: "Weiter Arbeitsweg? Pendlerpauschale und Pendlereuro bringen oft mehrere hundert Euro.", href: "/app/profil" });
   if (hasIncome && data.telearbeitstage === 0) tips.push({ icon: "🏠", text: "Im Homeoffice gearbeitet? Telearbeitspauschale und Mobiliar bis 300 € sind absetzbar.", href: "/app/profil" });
   if (hasIncome && data.werbungskosten.length === 0) tips.push({ icon: "💻", text: "Laptop, Fachbücher, Kurse? Werbungskosten über 132 € senken deine Steuer.", href: "/app/belege" });

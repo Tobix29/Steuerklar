@@ -82,7 +82,7 @@ export default function Profil() {
       <Button
         title="+ Kind hinzufügen"
         variant="secondary"
-        onPress={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1 }))}
+        onPress={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1, auswaertigeAusbildungMonate: 0 }))}
       />
 
       <Section title="Werbungskosten" footer="Am einfachsten: Rechnungen unter „Belege“ fotografieren. Bis 132 € gilt automatisch die Pauschale.">
