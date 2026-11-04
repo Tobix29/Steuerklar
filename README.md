@@ -60,6 +60,8 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 | Planung | Rücklagen-Planer: ESt-Vorauszahlungen, SVS-Beiträge, UVA-Zahllast; alle Termine als Kalender (`/api/calendar?alle=1`) |
 | Nach der Abgabe | **Bescheid prüfen** (`/api/finanzamt/bescheid`): Bescheid auslesen, mit eigener Berechnung vergleichen, Beschwerde-Entwurf nach §§ 243/250 BAO mit Frist (§ 245 BAO, § 108 BAO inkl. Feiertage) und ggf. Aussetzungsantrag (§ 212a BAO) |
 | Post vom Amt | **Brief erklären** (`/api/finanzamt/post`): Ergänzungsersuchen, Vorhalt, Zahlungsaufforderung … → Zusammenfassung, Schritte, Unterlagen, Antwort-Entwurf |
+| Anträge | Herabsetzung der Vorauszahlungen (§ 45 Abs. 4 EStG), Fristverlängerungen (§ 245 Abs. 3, § 134 Abs. 2 BAO), Ratenzahlung/Stundung (§ 212 BAO), Rückzahlung (§ 239 BAO) |
+| Sonderfälle | AMS-Bezüge mit Hochrechnung und Kontrollrechnung (§ 3 Abs. 2 EStG), Krypto/ausländische Depots ohne KESt (27,5 %, E1kv), Spekulationsgeschäfte und gelegentliche Leistungen mit Freigrenzen |
 | Fragen | KI-Steuerassistent mit Fallkontext |
 
 **Bleibt der Steuerberatung vorbehalten (WTBG 2017):** Vertretung vor Finanzamt und Bundesfinanzgericht, Außenprüfungen,
