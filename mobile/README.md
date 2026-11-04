@@ -61,3 +61,11 @@ Demo-Zugang bereitstellen, Hinweis „Software zur Selbsthilfe, keine Steuerbera
 2. Jailbreak/Root-Erkennung und App Attest / Play Integrity für API-Aufrufe.
 3. Push-Benachrichtigungen (z. B. „Bescheid da?“), Offline-Entwürfe verschlüsselt.
 4. 2FA-QR-Code direkt in der App anzeigen (aktuell: Schlüssel + „In Authenticator-App öffnen“).
+
+## Geteilte Steuer-Engine
+
+`metro.config.js` erlaubt Laufzeit-Importe der reinen Module aus `../src/lib` (Aliase `@core/*`, `@/*`):
+Steuerberechnung (`tax/calculate`, `tax/einkuenfte`, `tax/constants`), Spar-Check (`tax/insights`),
+Kontoauszug-Zuordnung (`ai/bank`) und Assistenten-Vorschläge (`ai/assistant`). `zod` wird aus `../node_modules`
+aufgelöst. Server-Module (`src/lib/server`, `src/lib/security`, `next`, `@anthropic-ai/*`, `sharp`, `pdf-lib`)
+sind im Resolver gesperrt und brechen den Build ab, falls sie versehentlich importiert werden.

@@ -49,6 +49,7 @@ export function YearChips() {
 
 /** Alle offenen Jahre mit Gutschrift und Frist; Fristwarnung für Jahre, die bald verfallen. */
 export function YearsOverview() {
+  const c = useColors();
   const { year, setYear, result, documentCount } = useCase();
   const [rows, setRows] = useState<YearRow[] | null>(null);
 
@@ -91,6 +92,7 @@ export function YearsOverview() {
               strong={r.year === year}
               sublabel={`${r.hasData ? `${r.documents} Beleg${r.documents === 1 ? "" : "e"}` : "Noch nicht begonnen"} · Frist ${fmtDate(f.antrag)}`}
               value={r.erstattung !== null ? eur(r.erstattung, 0) : undefined}
+              valueColor={r.erstattung === null ? undefined : r.erstattung >= 0 ? c.green : c.red}
               right={r.erstattung === null ? <Badge text={f.urgent ? "Frist läuft ab" : "Starten"} tone={f.urgent ? "orange" : "neutral"} /> : undefined}
               chevron
               onPress={() => setYear(r.year)}
