@@ -138,6 +138,21 @@ export async function buildPdf(c: TaxCase, r: TaxResult): Promise<Uint8Array> {
     w.row("Gesamtbetrag der Einkünfte", eur(r.gesamtbetragDerEinkuenfte), { strong: true });
   }
 
+  if (r.immoESt) {
+    w.h2("Immobilienertragsteuer");
+    for (const l of r.immoESt.lines) w.row(l.label, eur(l.amount));
+    w.row("ImmoESt gesamt", eur(r.immoESt.steuer), { strong: true });
+    w.row("Vom Notar abgeführt", eur(r.immoESt.abgefuehrt));
+  }
+  if (r.umsatzsteuer) {
+    w.h2("Umsatzsteuer", "Eigene Erklärung U1 bzw. Umsatzsteuervoranmeldungen – nicht Teil der Einkommensteuer");
+    w.row(r.umsatzsteuer.kleinunternehmer ? "Kleinunternehmer:in (keine USt)" : "Umsatzsteuerpflichtig", `${eur(r.umsatzsteuer.umsatz)} Umsatz`);
+    if (!r.umsatzsteuer.kleinunternehmer) {
+      for (const l of r.umsatzsteuer.lines) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount));
+      w.row(r.umsatzsteuer.zahllast >= 0 ? "Zahllast" : "Gutschrift", eur(Math.abs(r.umsatzsteuer.zahllast)), { strong: true });
+    }
+  }
+
   if (r.sonderausgaben.length) {
     w.h2("Sonderausgaben");
     for (const l of r.sonderausgaben) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { ref: l.kz ? `KZ ${l.kz}` : undefined });

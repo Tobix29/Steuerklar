@@ -132,7 +132,7 @@ export default function Ergebnis() {
 
       {r.weitereEinkuenfte.length > 0 && (
         <section>
-          <p className="section-label">Weitere Einkünfte (E1)</p>
+          <p className="section-label">{r.e1Erforderlich ? "Weitere Einkünfte (E1)" : "Weitere Einkünfte"}</p>
           <div className="list">
             {r.weitereEinkuenfte.map((l, i) => (
               <Item key={i} label={l.label} value={eur(l.amount)} hint={l.hint} strong={l.label.startsWith("Einkünfte")} />
@@ -155,6 +155,28 @@ export default function Ergebnis() {
           <Item label="Steuer auf sonstige Bezüge (Jahressechstel)" value={`+ ${eur(r.steuerSonstigeBezuege)}`} />
         </div>
       </section>
+
+      {r.immoESt && (
+        <section>
+          <p className="section-label">Immobilienertragsteuer</p>
+          <div className="list">
+            {r.immoESt.lines.map((l, i) => <Item key={i} label={l.label} value={eur(l.amount)} hint={l.hint} />)}
+            <Item label="ImmoESt gesamt" value={eur(r.immoESt.steuer)} strong />
+            <Item label="Vom Notar abgeführt" value={eur(r.immoESt.abgefuehrt)} hint={r.immoESt.regelGuenstiger ? "Regelbesteuerung ist günstiger – Differenz in der Gutschrift enthalten" : undefined} />
+          </div>
+        </section>
+      )}
+
+      {r.umsatzsteuer && (
+        <section>
+          <p className="section-label">Umsatzsteuer (eigene Erklärung U1)</p>
+          <div className="list">
+            <Item label={r.umsatzsteuer.kleinunternehmer ? "Kleinunternehmer:in – keine Umsatzsteuer" : "Umsatzsteuerpflichtig"} value={`${eur(r.umsatzsteuer.umsatz, 0)} / ${eur(r.umsatzsteuer.grenze, 0)}`} hint="Umsatz / Kleinunternehmergrenze" />
+            {!r.umsatzsteuer.kleinunternehmer && r.umsatzsteuer.lines.map((l, i) => <Item key={i} label={l.label} value={eur(l.amount)} hint={l.hint} />)}
+            {!r.umsatzsteuer.kleinunternehmer && <Item label={r.umsatzsteuer.zahllast >= 0 ? "Zahllast" : "Gutschrift"} value={eur(Math.abs(r.umsatzsteuer.zahllast))} strong />}
+          </div>
+        </section>
+      )}
 
       {(r.hinweise.length > 0 || r.pflichtveranlagung.length > 0) && (
         <section className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>

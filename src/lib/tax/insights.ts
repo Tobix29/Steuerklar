@@ -32,7 +32,7 @@ export interface Insights {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const eur = (n: number) => `€ ${n.toLocaleString("de-AT", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const eur = (n: number) => `€ ${n.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 export function insights(c: TaxCase, base: TaxResult = calculate(c)): Insights {
   const p = YEAR_PARAMS[c.year as TaxYear];
@@ -46,7 +46,7 @@ export function insights(c: TaxCase, base: TaxResult = calculate(c)): Insights {
     ["behinderung", "Behinderung (Pauschbeträge)", { behinderungGrad: 0, behinderungKfz: false }],
     ["unterhalt", "Unterhaltsabsetzbetrag", { unterhaltKinder: [] }],
     ["pension", "Erhöhter Pensionistenabsetzbetrag", { pensionErhoeht: false }],
-    ["kapital", "KESt-Gutschrift (Regelbesteuerung)", { kapital: { ertraege275: 0, ertraege25: 0, kestBezahlt: 0 } }],
+    ["kapital", "KESt-Gutschrift (Regelbesteuerung)", { kapital: { ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0 } }],
   ];
   const contributions: Contribution[] = [];
   for (const [key, label, patch] of variants) {

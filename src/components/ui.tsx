@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 export function MoneyInput({ value, onChange, id, ariaLabel, inline }: { value: number; onChange: (v: number) => void; id?: string; ariaLabel?: string; inline?: boolean }) {
-  const fmt = (n: number) => (n ? n.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
+  const fmt = (n: number) => (n ? n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
   const [text, setText] = useState(fmt(value));
   const [focus, setFocus] = useState(false);
   useEffect(() => {

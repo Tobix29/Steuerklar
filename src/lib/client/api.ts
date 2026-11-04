@@ -26,7 +26,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
 export const eur = (n: number, digits = 2) =>
   new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
 
-export const pct = (n: number) => `${(n * 100).toLocaleString("de-AT", { maximumFractionDigits: 1 })} %`;
+export const pct = (n: number) => `${(n * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`;
 
 export const uid = () => crypto.randomUUID();
 

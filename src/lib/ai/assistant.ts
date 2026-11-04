@@ -61,6 +61,9 @@ export function caseContext(c: TaxCase, r: TaxResult): string {
     betriebe: c.betriebe.map((b) => ({ art: b.art, einnahmen: b.einnahmen, gewinnermittlung: b.gewinnermittlung })),
     weitereEinkuenfte: r.weitereEinkuenfte.filter((l) => l.label.startsWith("Einkünfte")).map((l) => ({ posten: l.label, betrag: l.amount })),
     veranlagungsfreibetrag: r.veranlagungsfreibetrag,
+    ausland: c.ausland.map((a) => ({ land: a.land, art: a.art, betrag: a.betrag, methode: a.methode })),
+    immobilienverkaeufe: r.immoESt,
+    umsatzsteuer: r.umsatzsteuer && { kleinunternehmer: r.umsatzsteuer.kleinunternehmer, zahllast: r.umsatzsteuer.zahllast },
     ergebnis: {
       gutschrift: r.erstattung,
       einkommen: r.einkommen,

@@ -251,7 +251,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
   },
   2026: {
     year: 2026,
-    unverified: ["vab", "vabZuschlag", "svRueckerstattung", "familienbonus.over18", "avabPartnerIncomeLimit", "pension.svRate"],
+    unverified: ["svRueckerstattung", "familienbonus.over18", "avabPartnerIncomeLimit", "pension.svRate"],
     brackets: [
       { upTo: 13539, rate: 0 },
       { upTo: 21992, rate: 0.2 },
@@ -310,9 +310,9 @@ export const BEHINDERUNG_PAUSCHBETRAG = [
 
 /** Weitere Pauschalen ohne Selbstbehalt (VO über außergewöhnliche Belastungen, §34 Abs 8 EStG). */
 export const AGB_PAUSCHALEN = {
-  /** Freibetrag für eigenes Kfz bei Gehbehinderung, je Monat (zu verifizieren) */
+  /** Freibetrag für eigenes Kfz bei Gehbehinderung, je Monat (§3 VO über außergewöhnliche Belastungen, BMF) */
   kfzBehinderungMonat: 190,
-  /** Auswärtige Berufsausbildung eines Kindes, je Monat (zu verifizieren) */
+  /** Auswärtige Berufsausbildung eines Kindes, je begonnenem Monat (§34 Abs 8 EStG) */
   auswaertigeAusbildungMonat: 110,
 };
 
@@ -326,11 +326,19 @@ export const VERMIETUNG = {
   instandsetzungJahre: 15,
 };
 
+/** Umsatzsteuer-Kleinunternehmergrenze (§6 Abs 1 Z 27 UStG): bis 2024 netto 35.000 €, ab 2025 brutto 55.000 € */
+export function kleinunternehmerUst(year: number): { grenze: number; brutto: boolean; toleranz: number } {
+  return year >= 2025 ? { grenze: 55_000, brutto: true, toleranz: 0.1 } : { grenze: 35_000, brutto: false, toleranz: 0.15 };
+}
+
+/** Immobilienertragsteuer (§30a EStG): 30 %; Altvermögen pauschal 4,2 % (umgewidmet 18 %) des Erlöses, bis 2026 */
+export const IMMOEST = { satz: 0.3, altPauschal: 0.042, altUmgewidmet: 0.18, altBasis: 0.14, altBasisUmgewidmet: 0.6 };
+
 /** Veranlagungsfreibetrag für Nebeneinkünfte (§41 Abs 3 EStG), eingeschliffen bis zum Doppelten */
 export const VERANLAGUNGSFREIBETRAG = 730;
 
 /** Stammt nicht aus Primärquellen geprüft – vor Produktivbetrieb verifizieren (gilt jahresübergreifend). */
-export const UNVERIFIED_GLOBAL = ["AGB_PAUSCHALEN.kfzBehinderungMonat", "AGB_PAUSCHALEN.auswaertigeAusbildungMonat", "VERMIETUNG.neubauFaktor", "basispauschalierung 2025/2026", "kleinunternehmerGrenze 2021–2024"];
+export const UNVERIFIED_GLOBAL = ["VERMIETUNG.neubauFaktor", "IMMOEST.altBasis (Regelbesteuerung Altvermögen)"];
 
 /** Selbstbehalt bei außergewöhnlichen Belastungen (§34 Abs 4 EStG) */
 export const SELBSTBEHALT = [

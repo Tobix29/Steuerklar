@@ -45,7 +45,7 @@ export function vermietung(o: Mietobjekt, year: number): { ergebnis: number; lin
     .filter((i) => year >= i.jahr && year < i.jahr + VERMIETUNG.instandsetzungJahre)
     .reduce((a, i) => a + i.betrag / VERMIETUNG.instandsetzungJahre, 0);
   const wk: [string, number, string?][] = [
-    ["AfA Gebäude", afa.afa, afa.satz ? `${(afa.satz * 100).toLocaleString("de-AT")} %${afa.hinweis ? ` – ${afa.hinweis}` : ""}` : afa.hinweis],
+    ["AfA Gebäude", afa.afa, afa.satz ? `${(afa.satz * 100).toLocaleString("de-DE")} %${afa.hinweis ? ` – ${afa.hinweis}` : ""}` : afa.hinweis],
     ["Fremdfinanzierungszinsen", o.zinsen],
     ["Instandhaltung", o.instandhaltung],
     ["Instandsetzung (1/15)", cents(inst)],
@@ -66,13 +66,13 @@ export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Lin
   let methode = "Einnahmen-Ausgaben-Rechnung";
   if (b.gewinnermittlung === "basis") {
     if (b.einnahmen > p.basispauschalierung.umsatzgrenze)
-      hinweise.push(`Basispauschalierung nur bis ${p.basispauschalierung.umsatzgrenze.toLocaleString("de-AT")} € Umsatz möglich.`);
+      hinweise.push(`Basispauschalierung nur bis ${p.basispauschalierung.umsatzgrenze.toLocaleString("de-DE")} € Umsatz möglich.`);
     const rate = b.reduzierterSatz ? p.basispauschalierung.reduziert : p.basispauschalierung.rate;
     ausgaben = cents(b.einnahmen * rate);
-    methode = `Basispauschalierung ${(rate * 100).toLocaleString("de-AT")} %`;
+    methode = `Basispauschalierung ${(rate * 100).toLocaleString("de-DE")} %`;
   } else if (b.gewinnermittlung === "klein") {
     if (b.einnahmen > p.kleinunternehmerGrenze)
-      hinweise.push(`Kleinunternehmerpauschalierung nur bis ${p.kleinunternehmerGrenze.toLocaleString("de-AT")} € Umsatz möglich.`);
+      hinweise.push(`Kleinunternehmerpauschalierung nur bis ${p.kleinunternehmerGrenze.toLocaleString("de-DE")} € Umsatz möglich.`);
     const rate = b.dienstleistung ? 0.2 : 0.45;
     ausgaben = cents(Math.min(b.einnahmen, p.kleinunternehmerGrenze) * rate);
     methode = `Kleinunternehmerpauschalierung ${rate * 100} %`;
@@ -81,7 +81,7 @@ export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Lin
   if (b.sozialversicherung > 0) lines.push({ label: "– Sozialversicherung (SVS)", amount: -b.sozialversicherung });
   const vorGfb = cents(b.einnahmen - ausgaben - b.sozialversicherung);
   const gfb = vorGfb > 0 ? cents(Math.min(vorGfb, p.gewinnfreibetrag.bis) * p.gewinnfreibetrag.rate) : 0;
-  if (gfb > 0) lines.push({ label: "– Gewinnfreibetrag (Grundfreibetrag)", amount: -gfb, hint: `${p.gewinnfreibetrag.rate * 100} % bis ${p.gewinnfreibetrag.bis.toLocaleString("de-AT")} € Gewinn` });
+  if (gfb > 0) lines.push({ label: "– Gewinnfreibetrag (Grundfreibetrag)", amount: -gfb, hint: `${p.gewinnfreibetrag.rate * 100} % bis ${p.gewinnfreibetrag.bis.toLocaleString("de-DE")} € Gewinn` });
 
   // Investitionsbedingter Gewinnfreibetrag: nur bei Einnahmen-Ausgaben-Rechnung, gedeckt durch begünstigte Investitionen
   let inv = 0;
@@ -98,9 +98,9 @@ export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Lin
       if (moeglich > 0) hinweise.push("Den investitionsbedingten Gewinnfreibetrag gibt es nur ohne Pauschalierung.");
     } else {
       inv = cents(Math.min(moeglich, b.investitionen));
-      if (inv > 0) lines.push({ label: "– Investitionsbedingter Gewinnfreibetrag", amount: -inv, hint: `gedeckt durch Investitionen von ${b.investitionen.toLocaleString("de-AT")} €` });
+      if (inv > 0) lines.push({ label: "– Investitionsbedingter Gewinnfreibetrag", amount: -inv, hint: `gedeckt durch Investitionen von ${b.investitionen.toLocaleString("de-DE")} €` });
       if (moeglich - inv >= 100)
-        hinweise.push(`Mit weiteren begünstigten Investitionen (z. B. Wertpapiere laut §14 EStG) von bis zu ${Math.round(moeglich - inv).toLocaleString("de-AT")} € könntest du den Gewinnfreibetrag voll nutzen.`);
+        hinweise.push(`Mit weiteren begünstigten Investitionen (z. B. Wertpapiere laut §14 EStG) von bis zu ${Math.round(moeglich - inv).toLocaleString("de-DE")} € könntest du den Gewinnfreibetrag voll nutzen.`);
     }
   }
   return { gewinn: cents(vorGfb - gfb - inv), lines, hinweise };

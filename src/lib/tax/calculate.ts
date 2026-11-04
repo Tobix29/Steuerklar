@@ -11,12 +11,12 @@
  * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
 import { betrieb, vermietung, veranlagungsfreibetrag } from "./einkuenfte";
-import { VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
+import { IMMOEST, kleinunternehmerUst, VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
 import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 const sum = (xs: { amount: number }[]) => cents(xs.reduce((a, x) => a + x.amount, 0));
-const eur = (n: number) => n.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const eur = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Tarifsteuer §33 Abs 1 EStG (stufenweise). */
 export function tarifsteuer(einkommen: number, p: YearParams): number {
@@ -197,7 +197,21 @@ export function calculate(input: TaxCase): TaxResult {
   const neben = cents(vvSumme + betriebSumme);
   const vfb = hasEmployment || hasPension ? veranlagungsfreibetrag(neben, VERANLAGUNGSFREIBETRAG) : 0;
   if (vfb > 0) hinweise.push(`Deine Nebeneinkünfte (${eur(neben)} €) sind ${vfb >= neben ? "zur Gänze" : "teilweise"} steuerfrei (Veranlagungsfreibetrag bis 730 €).`);
-  const gde = cents(einkuenfte + neben - vfb);
+  /* ---- Auslandseinkünfte (L1i): Befreiung mit Progressionsvorbehalt oder Anrechnung ---- */
+  const befreit = cents(input.ausland.filter((a) => a.methode === "befreiung").reduce((x, a) => x + a.betrag, 0));
+  const anrechnungEink = cents(input.ausland.filter((a) => a.methode === "anrechnung").reduce((x, a) => x + a.betrag, 0));
+  const auslandSteuer = cents(input.ausland.filter((a) => a.methode === "anrechnung").reduce((x, a) => x + a.steuerAusland, 0));
+  if (befreit > 0) {
+    formular.push({ formular: "L1i", kz: "453", label: "Steuerfreie Auslandseinkünfte (Progressionsvorbehalt)", value: `€ ${eur(befreit)}` });
+    weitere.push({ label: "Auslandseinkünfte, steuerfrei (nur für den Steuersatz)", amount: befreit, hint: "Progressionsvorbehalt" });
+  }
+  if (anrechnungEink > 0) {
+    formular.push({ formular: "L1i", kz: "—", label: "Auslandseinkünfte mit Anrechnung der ausländischen Steuer", value: `€ ${eur(anrechnungEink)} / Steuer € ${eur(auslandSteuer)}` });
+    weitere.push({ label: "Einkünfte aus dem Ausland (Anrechnungsmethode)", amount: anrechnungEink });
+  }
+  if (input.ausland.length) pflicht.push("Auslandseinkünfte – die Veranlagung ist verpflichtend (Formular L1i bzw. E1).");
+
+  const gde = cents(einkuenfte + neben - vfb + anrechnungEink);
   const e1 = input.mietobjekte.length > 0 || input.betriebe.length > 0;
   if (neben > VERANLAGUNGSFREIBETRAG && (hasEmployment || hasPension))
     pflicht.push("Nebeneinkünfte über 730 € – du musst eine Einkommensteuererklärung (E1) abgeben (Frist: 30. April, elektronisch 30. Juni des Folgejahres).");
@@ -281,7 +295,8 @@ export function calculate(input: TaxCase): TaxResult {
     hinweise.push(`Kein erhöhter Pensionistenabsetzbetrag: Partnereinkünfte über ${eur(p.pension.partnerLimit)} € oder Anspruch auf Alleinverdienerabsetzbetrag.`);
 
   function steuerAus(eink: number, collect: boolean) {
-    const tarif = tarifsteuer(eink, p);
+    // Progressionsvorbehalt: Durchschnittssteuersatz inkl. steuerfreier Auslandseinkünfte auf das Inlandseinkommen
+    const tarif = befreit > 0 && eink > 0 ? cents((tarifsteuer(eink + befreit, p) * eink) / (eink + befreit)) : tarifsteuer(eink, p);
     const abs: Line[] = [];
     const neg: Line[] = [];
     const form: FormEntry[] = [];
@@ -299,6 +314,16 @@ export function calculate(input: TaxCase): TaxResult {
       form.push({ formular: "L1k", kz: "—", label: "Familienbonus Plus beantragen (je Kind ein L1k)", value: kids.map((k) => `${k.firstName || "Kind"}: ${k.familienbonusShare === 1 ? "ganz" : "Hälfte"}`).join(", ") });
     }
     let steuer = cents(tarif - fbWirksam);
+
+    // Anrechnung ausländischer Steuer: höchstens die österreichische Steuer, die auf die Auslandseinkünfte entfällt
+    if (anrechnungEink > 0 && auslandSteuer > 0 && eink > 0) {
+      const hoechst = cents((tarif * Math.min(anrechnungEink, eink)) / eink);
+      const anr = cents(Math.min(auslandSteuer, hoechst, steuer));
+      if (anr > 0) {
+        abs.push({ label: "Anrechnung ausländischer Steuer", amount: anr, hint: anr < auslandSteuer ? `Höchstbetrag ${eur(hoechst)} €` : undefined });
+        steuer = cents(steuer - anr);
+      }
+    }
 
     const { vab, zuschlag } = hasEmployment ? verkehrsabsetzbetrag(eink, p) : { vab: 0, zuschlag: 0 };
     const pendlereuro = pendlerAnspruch ? cents(input.pendlerKm * p.pendlereuroPerKm * pendlerFaktor(input.fahrtenProMonat)) : 0;
@@ -377,30 +402,116 @@ export function calculate(input: TaxCase): TaxResult {
   const { tarif, abs, neg } = basis;
   const steuer = basis.steuer;
 
-  /* ---- Kapitalerträge: Regelbesteuerungsoption (§27a Abs 5) ---- */
+  /* ---- Kapitalerträge: Verlustausgleich und Regelbesteuerungsoption (§27 Abs 8, §27a Abs 5) ---- */
   const k = input.kapital;
-  const kapitalSumme = cents(k.ertraege275 + k.ertraege25);
+  const verlustAusgl = cents(Math.min(k.verluste275, k.ertraege275));
+  const netto275 = cents(k.ertraege275 - verlustAusgl);
+  const kapitalSumme = cents(netto275 + k.ertraege25);
   let kapitalErstattung = 0;
   let kapitalOption: TaxResult["kapitalOption"] = null;
-  if (kapitalSumme > 0) {
+  if (k.ertraege275 + k.ertraege25 > 0) {
+    // A) nur Verlustausgleichsoption: KESt neu berechnen (Sparbuchzinsen sind nicht ausgleichsfähig)
+    const refundA = verlustAusgl > 0 ? cents(k.kestBezahlt - (netto275 * 0.275 + k.ertraege25 * 0.25)) : 0;
+    // B) Regelbesteuerungsoption (inkl. Verlustausgleich): Erträge zum Tarif
     const regel = steuerAus(einkommen + kapitalSumme, false);
     const mehrsteuer = cents(regel.steuer - steuer);
-    const erst = cents(k.kestBezahlt - mehrsteuer);
-    const empfohlen = erst >= 1;
-    kapitalOption = { empfohlen, erstattung: empfohlen ? erst : 0, mehrsteuer };
+    const refundB = cents(k.kestBezahlt - mehrsteuer);
+    const best = Math.max(refundA, refundB);
+    const empfohlen = best >= 1;
+    kapitalOption = { empfohlen, erstattung: empfohlen ? best : 0, mehrsteuer, verlustausgleich: verlustAusgl };
     if (empfohlen) {
-      kapitalErstattung = erst;
-      neg.push({ label: "KESt-Gutschrift (Regelbesteuerungsoption)", amount: erst, hint: `KESt ${eur(k.kestBezahlt)} € − Steuer nach Tarif ${eur(Math.max(0, mehrsteuer))} €` });
-      formular.push({ formular: "E1kv", kz: "—", label: "Regelbesteuerungsoption für Kapitalerträge ausüben (Erklärung E1 mit Beilage E1kv statt L1)", value: `€ ${eur(kapitalSumme)} Erträge` });
-      hinweise.push("Die Regelbesteuerungsoption gilt für alle Kapitalerträge mit Sondersteuersatz. Vermittelst du jemandem den Alleinverdienerabsetzbetrag, kann die Erstattung entfallen.");
-    } else {
-      hinweise.push("Die Regelbesteuerungsoption für Kapitalerträge lohnt sich bei dir nicht – dein Steuersatz liegt über dem KESt-Satz.");
+      kapitalErstattung = best;
+      const regelBesser = refundB >= refundA;
+      neg.push({
+        label: regelBesser ? "KESt-Gutschrift (Regelbesteuerungsoption)" : "KESt-Gutschrift (Verlustausgleich)",
+        amount: best,
+        hint: regelBesser
+          ? `KESt ${eur(k.kestBezahlt)} € − Steuer nach Tarif ${eur(Math.max(0, mehrsteuer))} €${verlustAusgl > 0 ? `, Verluste ${eur(verlustAusgl)} € verrechnet` : ""}`
+          : `Verluste ${eur(verlustAusgl)} € mit Erträgen verrechnet`,
+      });
+      if (regelBesser) formular.push({ formular: "E1kv", kz: "—", label: "Regelbesteuerungsoption für Kapitalerträge ausüben (E1 mit Beilage E1kv)", value: `€ ${eur(kapitalSumme)} Erträge` });
+      if (verlustAusgl > 0) formular.push({ formular: "E1kv", kz: "—", label: "Verlustausgleichsoption ausüben (Verluste über mehrere Depots)", value: `€ ${eur(verlustAusgl)}` });
+      hinweise.push("Die Optionen gelten für alle Kapitalerträge mit Sondersteuersatz. Vermittelst du jemandem den Alleinverdienerabsetzbetrag, kann die Erstattung entfallen.");
+    } else if (k.ertraege275 + k.ertraege25 > 0) {
+      hinweise.push("Regelbesteuerungs- und Verlustausgleichsoption bringen dir bei den Kapitalerträgen nichts – die KESt bleibt endgültig.");
+    }
+  }
+
+  /* ---- Immobilienertragsteuer (§30, §30a EStG) ---- */
+  let immoESt: TaxResult["immoESt"] = null;
+  let immoNachzahlung = 0;
+  if (input.immobilienverkaeufe.length) {
+    const lines: Line[] = [];
+    let steuerImmo = 0;
+    let regelBasis = 0;
+    let abgefuehrt = 0;
+    for (const v of input.immobilienverkaeufe) {
+      abgefuehrt += v.abgefuehrt;
+      const name = v.bezeichnung || "Verkauf";
+      if (v.hauptwohnsitz) {
+        lines.push({ label: `${name}: steuerfrei (Hauptwohnsitzbefreiung)`, amount: 0 });
+        continue;
+      }
+      if (v.altvermoegen) {
+        const st = cents(v.erloes * (v.umgewidmet ? IMMOEST.altUmgewidmet : IMMOEST.altPauschal));
+        steuerImmo += st;
+        regelBasis += v.erloes * (v.umgewidmet ? IMMOEST.altBasisUmgewidmet : IMMOEST.altBasis);
+        lines.push({ label: `${name}: Altvermögen, pauschal ${v.umgewidmet ? "18" : "4,2"} % des Erlöses`, amount: st });
+      } else {
+        const gewinnBrutto = Math.max(0, v.erloes - v.anschaffungskosten - v.herstellungskosten + v.afaGeltend);
+        const gewinn = cents(gewinnBrutto * (1 - v.herstellerGebaeudeanteil / 100));
+        const st = cents(gewinn * IMMOEST.satz);
+        steuerImmo += st;
+        regelBasis += gewinn;
+        lines.push({ label: `${name}: Veräußerungsgewinn ${eur(gewinn)} € × 30 %`, amount: st, hint: v.herstellerGebaeudeanteil > 0 ? "Gebäudeanteil steuerfrei (Herstellerbefreiung)" : undefined });
+        if (v.erloes < v.anschaffungskosten + v.herstellungskosten) hinweise.push("Verluste aus Grundstücksverkäufen sind nur eingeschränkt ausgleichsfähig (60 % mit Vermietungseinkünften) – hier nicht berechnet.");
+      }
+    }
+    steuerImmo = cents(steuerImmo);
+    abgefuehrt = cents(abgefuehrt);
+    const regel = steuerAus(einkommen + regelBasis, false);
+    const regelSteuer = cents(regel.steuer - steuer);
+    const regelGuenstiger = regelBasis > 0 && regelSteuer < steuerImmo - 1;
+    const geschuldet = regelGuenstiger ? regelSteuer : steuerImmo;
+    immoNachzahlung = cents(geschuldet - abgefuehrt);
+    immoESt = { lines, steuer: steuerImmo, abgefuehrt, regelGuenstiger };
+    if (regelGuenstiger) {
+      hinweise.push(`Regelbesteuerungsoption für den Grundstücksverkauf: Nach Tarif zahlst du ${eur(Math.max(0, regelSteuer))} € statt ${eur(steuerImmo)} € ImmoESt.`);
+      formular.push({ formular: "E1", kz: "—", label: "Regelbesteuerungsoption für Grundstücksveräußerung beantragen", value: `€ ${eur(steuerImmo - Math.max(0, regelSteuer))} Ersparnis` });
+    } else if (steuerImmo > abgefuehrt + 1) {
+      formular.push({ formular: "E1", kz: "—", label: "Einkünfte aus Grundstücksveräußerung erklären (ImmoESt nicht vollständig abgeführt)", value: `€ ${eur(steuerImmo - abgefuehrt)}` });
+      pflicht.push("Die ImmoESt wurde nicht vollständig vom Notar abgeführt – du musst den Verkauf in der Einkommensteuererklärung angeben.");
+    }
+  }
+
+  /* ---- Umsatzsteuer (eigene Erklärung U1) ---- */
+  let umsatzsteuer: TaxResult["umsatzsteuer"] = null;
+  const ustQuellen = [
+    ...input.betriebe.map((b) => ({ name: b.bezeichnung || (b.art === "gewerbe" ? "Gewerbe" : "Selbständig"), netto: b.einnahmen, satz: b.ustSatz, vst: b.vorsteuer })),
+    ...input.mietobjekte.map((o) => ({ name: o.bezeichnung || "Vermietung", netto: o.einnahmen, satz: o.ustSatz, vst: o.vorsteuer })),
+  ].filter((q) => q.netto > 0);
+  if (ustQuellen.length) {
+    const ku = kleinunternehmerUst(year);
+    const netto = cents(ustQuellen.reduce((a, q) => a + q.netto, 0));
+    const brutto = cents(ustQuellen.reduce((a, q) => a + q.netto * (1 + q.satz / 100), 0));
+    const massgeblich = ku.brutto ? brutto : netto;
+    const klein = massgeblich <= ku.grenze && !input.ustVerzicht;
+    const lines: Line[] = ustQuellen.map((q) => ({ label: `${q.name}: ${q.satz} % Umsatzsteuer`, amount: klein ? 0 : cents((q.netto * q.satz) / 100), hint: !klein && q.vst ? `abzgl. Vorsteuer ${eur(q.vst)} €` : undefined }));
+    const zahllast = klein ? 0 : cents(ustQuellen.reduce((a, q) => a + (q.netto * q.satz) / 100 - q.vst, 0));
+    umsatzsteuer = { umsatz: massgeblich, grenze: ku.grenze, kleinunternehmer: klein, zahllast, lines };
+    if (klein)
+      hinweise.push(`Umsatzsteuer: Du bist Kleinunternehmer:in (Umsatz ${eur(massgeblich)} € ${ku.brutto ? "brutto" : "netto"} ≤ ${eur(ku.grenze)} €) – keine Umsatzsteuer, aber auch kein Vorsteuerabzug.`);
+    else {
+      if (massgeblich <= ku.grenze * (1 + ku.toleranz) && massgeblich > ku.grenze)
+        hinweise.push(`Umsatzsteuer: Dein Umsatz liegt in der Toleranz bis ${eur(ku.grenze * (1 + ku.toleranz))} € – prüfe, ob die Kleinunternehmerbefreiung noch gilt.`);
+      formular.push({ formular: "U1", kz: "—", label: zahllast >= 0 ? "Umsatzsteuer-Jahreserklärung U1 (Zahllast)" : "Umsatzsteuer-Jahreserklärung U1 (Gutschrift)", value: `€ ${eur(zahllast)}` });
+      hinweise.push("Die Umsatzsteuer ist nicht Teil der Einkommensteuer-Gutschrift – sie wird per UVA bzw. Jahreserklärung U1 abgerechnet.");
     }
   }
 
   const est = cents(steuer + steuerSonst);
   const lst = cents(lz.reduce((a, x) => a + x.kz260, 0));
-  const erstattung = cents(lst - est + kapitalErstattung);
+  const erstattung = cents(lst - est + kapitalErstattung - immoNachzahlung);
 
   /* ---- Steuersätze ---- */
   const grenz = einkommen > 0 ? (tarifsteuer(einkommen + 100, p) - tarifsteuer(einkommen, p)) / 100 : 0;
@@ -445,6 +556,8 @@ export function calculate(input: TaxCase): TaxResult {
     durchschnittssteuersatz: brutto > 0 ? Math.round((Math.max(0, est) / brutto) * 1000) / 1000 : 0,
     formular,
     kapitalOption,
+    umsatzsteuer,
+    immoESt,
     hinweise,
     pflichtveranlagung: pflicht,
   };

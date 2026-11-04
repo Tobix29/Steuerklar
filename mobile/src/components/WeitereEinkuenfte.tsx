@@ -8,11 +8,11 @@ import { betrieb, gebaeudeAfa, vermietung } from "@core/tax/einkuenfte";
 
 const neuesObjekt = (year: number): Mietobjekt => ({
   id: uid(), bezeichnung: "", einnahmen: 0, anschaffungskosten: 0, grundanteil: 20, anschaffungsjahr: year - 5, anschaffungsmonat: 1,
-  neubau2024bis2026: false, afaManuell: 0, zinsen: 0, instandhaltung: 0, instandsetzungen: [], betriebskosten: 0, sonstigeWerbungskosten: 0,
+  neubau2024bis2026: false, afaManuell: 0, zinsen: 0, instandhaltung: 0, instandsetzungen: [], betriebskosten: 0, sonstigeWerbungskosten: 0, ustSatz: 10, vorsteuer: 0,
 });
 
 const neuerBetrieb = (): Betrieb => ({
-  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0,
+  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0,
 });
 
 /** Vermietung (E1b) und Selbständig/Gewerbe (E1a) – Hauptfelder; Instandsetzungen u. ä. in der Web-Version. */
@@ -85,13 +85,13 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               onChange={(v) => upd((x) => void (x.gewinnermittlung = v))}
               options={[
                 { value: "ear", label: "Einnahmen-Ausgaben-Rechnung" },
-                { value: "basis", label: `Basispauschalierung (${(p.basispauschalierung.rate * 100).toLocaleString("de-AT")} %)` },
+                { value: "basis", label: `Basispauschalierung (${(p.basispauschalierung.rate * 100).toLocaleString("de-DE")} %)` },
                 { value: "klein", label: `Kleinunternehmerpauschalierung (bis ${eur(p.kleinunternehmerGrenze, 0)})` },
               ]}
             />
             {b.gewinnermittlung === "ear" && <MoneyRow label="Betriebsausgaben" sublabel="ohne Sozialversicherung" value={b.ausgaben} onChange={(v) => upd((x) => void (x.ausgaben = v))} />}
             {b.gewinnermittlung === "basis" && (
-              <SwitchRow label="Beratung, Vortrag, Schriftsteller" sublabel={`reduzierter Satz ${(p.basispauschalierung.reduziert * 100).toLocaleString("de-AT")} %`} value={b.reduzierterSatz} onValueChange={(v) => upd((x) => void (x.reduzierterSatz = v))} />
+              <SwitchRow label="Beratung, Vortrag, Schriftsteller" sublabel={`reduzierter Satz ${(p.basispauschalierung.reduziert * 100).toLocaleString("de-DE")} %`} value={b.reduzierterSatz} onValueChange={(v) => upd((x) => void (x.reduzierterSatz = v))} />
             )}
             {b.gewinnermittlung === "klein" && (
               <SwitchRow label="Dienstleistungsbetrieb" sublabel="20 % statt 45 % Pauschale" value={b.dienstleistung} onValueChange={(v) => upd((x) => void (x.dienstleistung = v))} />

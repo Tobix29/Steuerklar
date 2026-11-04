@@ -77,6 +77,12 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <Row label="Sonstige Werbungskosten" help="Versicherung, Inserate, Fahrten, Steuerberatung für die Vermietung">
                 <MoneyInput ariaLabel="Sonstige Werbungskosten Vermietung" value={o.sonstigeWerbungskosten} onChange={(v) => upd((x) => void (x.sonstigeWerbungskosten = v))} />
               </Row>
+              <Row label="Umsatzsteuer" help="Wohnung 10 %, Geschäftsraum/Garage 20 % – bei Kleinunternehmer:innen keine USt">
+                <Segmented label="USt-Satz Vermietung" value={o.ustSatz} options={[{ value: 10, label: "10 %" }, { value: 20, label: "20 %" }, { value: 0, label: "frei" }]} onChange={(v) => upd((x) => void (x.ustSatz = v))} />
+              </Row>
+              <Row label="Vorsteuer" help="Umsatzsteuer aus Rechnungen für das Objekt (nur ohne Kleinunternehmerbefreiung)">
+                <MoneyInput ariaLabel="Vorsteuer Vermietung" value={o.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
+              </Row>
               <div className="list-item" style={{ flexWrap: "wrap", gap: 8 }}>
                 <div className="grow" style={{ minWidth: 180 }}>
                   <div>Instandsetzungen</div>
@@ -126,7 +132,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <Row label="Gewinnermittlung">
                 <select className="select input-inline" value={b.gewinnermittlung} onChange={(e) => upd((x) => void (x.gewinnermittlung = e.target.value as typeof b.gewinnermittlung))}>
                   <option value="ear">Einnahmen-Ausgaben-Rechnung</option>
-                  <option value="basis">Basispauschalierung ({(p.basispauschalierung.rate * 100).toLocaleString("de-AT")} %)</option>
+                  <option value="basis">Basispauschalierung ({(p.basispauschalierung.rate * 100).toLocaleString("de-DE")} %)</option>
                   <option value="klein">Kleinunternehmerpauschalierung (bis {eur(p.kleinunternehmerGrenze, 0)})</option>
                 </select>
               </Row>
@@ -136,7 +142,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                 </Row>
               )}
               {b.gewinnermittlung === "basis" && (
-                <Row label="Beratung, Vortrag, schriftstellerische Tätigkeit" help={`Reduzierter Satz ${(p.basispauschalierung.reduziert * 100).toLocaleString("de-AT")} %`}>
+                <Row label="Beratung, Vortrag, schriftstellerische Tätigkeit" help={`Reduzierter Satz ${(p.basispauschalierung.reduziert * 100).toLocaleString("de-DE")} %`}>
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <Toggle label="Reduzierter Satz" checked={b.reduzierterSatz} onChange={(v) => upd((x) => void (x.reduzierterSatz = v))} />
                   </div>
@@ -154,6 +160,12 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                   <MoneyInput ariaLabel="Investitionen" value={b.investitionen} onChange={(v) => upd((x) => void (x.investitionen = v))} />
                 </Row>
               )}
+              <Row label="Umsatzsteuer-Satz" help="Meist 20 %; z. B. 10 % für Bücher, 13 % für Kunst">
+                <Segmented label="USt-Satz Betrieb" value={b.ustSatz} options={[{ value: 20, label: "20 %" }, { value: 13, label: "13 %" }, { value: 10, label: "10 %" }, { value: 0, label: "frei" }]} onChange={(v) => upd((x) => void (x.ustSatz = v))} />
+              </Row>
+              <Row label="Vorsteuer" help="Umsatzsteuer aus Eingangsrechnungen (nur ohne Kleinunternehmerbefreiung)">
+                <MoneyInput ariaLabel="Vorsteuer Betrieb" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
+              </Row>
               <Row label="SVS-Beiträge bezahlt" help="Sind immer zusätzlich absetzbar">
                 <MoneyInput ariaLabel="SVS-Beiträge" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
               </Row>
@@ -176,6 +188,16 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
         <div className="list">
           <Row label="Verlustvortrag aus Vorjahren" help="Noch nicht verrechnete Verluste aus selbständiger oder gewerblicher Tätigkeit – max. 75 % des Gesamtbetrags der Einkünfte pro Jahr">
             <MoneyInput ariaLabel="Verlustvortrag" value={data.verlustvortrag} onChange={(v) => set((d) => void (d.verlustvortrag = v))} />
+          </Row>
+        </div>
+      )}
+
+      {(data.betriebe.length > 0 || data.mietobjekte.length > 0) && (
+        <div className="list">
+          <Row label="Auf die Kleinunternehmerbefreiung verzichten" help="Dann verrechnest du Umsatzsteuer und bekommst die Vorsteuer zurück (bindet 5 Jahre)">
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Toggle label="USt-Verzicht" checked={data.ustVerzicht} onChange={(v) => set((d) => void (d.ustVerzicht = v))} />
+            </div>
           </Row>
         </div>
       )}

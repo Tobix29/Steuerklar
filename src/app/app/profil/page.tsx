@@ -6,6 +6,7 @@ import { behinderungPauschbetrag, pendlerpauschale } from "@/lib/tax/calculate";
 import type { Expense, TaxCase } from "@/lib/tax/types";
 import { useCase } from "../CaseContext";
 import { WeitereEinkuenfte } from "./WeitereEinkuenfte";
+import { AuslandImmo } from "./AuslandImmo";
 
 type ListKey = "spenden" | "krankheitskosten" | "steuerberatung" | "werbungskosten";
 
@@ -282,6 +283,9 @@ export default function Profil() {
           <Row label="Zinsen mit 25 % KESt" help="Sparbuch, Festgeld, Girokonto">
             <MoneyInput ariaLabel="Zinsen 25 %" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
           </Row>
+          <Row label="Realisierte Verluste aus anderen Depots" help="Kursverluste, die deine Bank nicht schon mit Gewinnen verrechnet hat (Verlustausgleich)">
+            <MoneyInput ariaLabel="Verluste Kapital" value={data.kapital.verluste275} onChange={(v) => set((d) => void (d.kapital.verluste275 = v))} />
+          </Row>
           <Row label="Bereits abgezogene KESt">
             <MoneyInput ariaLabel="KESt bezahlt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
           </Row>
@@ -290,6 +294,8 @@ export default function Profil() {
       </section>
 
       <WeitereEinkuenfte data={data} set={set} year={year} />
+
+      <AuslandImmo data={data} set={set} />
 
       <section className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
         <div>

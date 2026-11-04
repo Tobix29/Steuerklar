@@ -64,6 +64,9 @@ export const MietobjektSchema = z.object({
   instandsetzungen: z.array(z.object({ id: z.string().max(64), jahr: z.number().int().min(1990).max(2100), betrag: money })).max(30).default([]),
   betriebskosten: optMoney,
   sonstigeWerbungskosten: optMoney,
+  /** Umsatzsteuer: Wohnung 10 %, Geschäftsraum/Garage 20 %, steuerfrei 0 % */
+  ustSatz: z.union([z.literal(0), z.literal(10), z.literal(13), z.literal(20)]).default(10),
+  vorsteuer: optMoney,
 });
 export type Mietobjekt = z.infer<typeof MietobjektSchema>;
 
@@ -85,6 +88,8 @@ export const BetriebSchema = z.object({
   investitionen: optMoney,
   /** Kleinunternehmerpauschalierung: Dienstleistungsbetrieb (20 % statt 45 %) */
   dienstleistung: z.boolean().default(false),
+  ustSatz: z.union([z.literal(0), z.literal(10), z.literal(13), z.literal(20)]).default(20),
+  vorsteuer: optMoney,
 });
 export type Betrieb = z.infer<typeof BetriebSchema>;
 
@@ -152,8 +157,59 @@ export const TaxCaseSchema = z.object({
   pensionErhoeht: z.boolean().default(false),
   /** Kapitalerträge mit Sondersteuersatz und bereits einbehaltene KESt (für die Regelbesteuerungsoption) */
   kapital: z
-    .object({ ertraege275: optMoney, ertraege25: optMoney, kestBezahlt: optMoney })
-    .default({ ertraege275: 0, ertraege25: 0, kestBezahlt: 0 }),
+    .object({
+      ertraege275: optMoney,
+      ertraege25: optMoney,
+      kestBezahlt: optMoney,
+      /** Realisierte Verluste (Aktien, Fonds …), die die Bank nicht schon verrechnet hat – z. B. bei mehreren Depots */
+      verluste275: optMoney,
+    })
+    .default({ ertraege275: 0, ertraege25: 0, kestBezahlt: 0, verluste275: 0 }),
+  /** Ausländische Einkünfte (Formular L1i bzw. E1) */
+  ausland: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        land: z.string().max(80).default(""),
+        art: z.enum(["nichtselbstaendig", "pension", "sonstige"]).default("nichtselbstaendig"),
+        /** Einkünfte in Euro (nach ausländischer Sozialversicherung) */
+        betrag: optMoney,
+        /** Laut Doppelbesteuerungsabkommen: steuerfrei mit Progressionsvorbehalt oder Anrechnung der Auslandssteuer */
+        methode: z.enum(["befreiung", "anrechnung"]).default("befreiung"),
+        steuerAusland: optMoney,
+      }),
+    )
+    .max(10)
+    .default([]),
+  /** Private Grundstücksverkäufe (ImmoESt) */
+  immobilienverkaeufe: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        bezeichnung: z.string().max(200).default(""),
+        erloes: optMoney,
+        anschaffungskosten: optMoney,
+        /** Herstellungs- und Instandsetzungskosten seit dem Erwerb */
+        herstellungskosten: optMoney,
+        /** Bei Vermietung bereits geltend gemachte AfA (erhöht den Gewinn) */
+        afaGeltend: optMoney,
+        anschaffungsjahr: z.number().int().min(1900).max(2100).default(2010),
+        /** Altvermögen: letzter Erwerb vor dem 31.3.2002 */
+        altvermoegen: z.boolean().default(false),
+        /** Umwidmung in Bauland nach 1987 (nur Altvermögen) */
+        umgewidmet: z.boolean().default(false),
+        /** Hauptwohnsitzbefreiung erfüllt (2 Jahre seit Erwerb durchgehend oder 5 der letzten 10 Jahre Hauptwohnsitz) */
+        hauptwohnsitz: z.boolean().default(false),
+        /** Herstellerbefreiung: selbst errichtetes Gebäude (Grund bleibt steuerpflichtig) – Gebäudeanteil in % */
+        herstellerGebaeudeanteil: z.number().min(0).max(100).default(0),
+        /** ImmoESt wurde vom Notar bzw. Rechtsanwalt selbst berechnet und abgeführt */
+        abgefuehrt: optMoney,
+      }),
+    )
+    .max(10)
+    .default([]),
+  /** Umsatzsteuer: auf die Kleinunternehmerbefreiung verzichten (Regelbesteuerung, Vorsteuerabzug) */
+  ustVerzicht: z.boolean().default(false),
   familienstatus: z.enum(["keine", "alleinverdiener", "alleinerzieher"]).default("keine"),
   /** Einkünfte der Partnerin/des Partners (für den Alleinverdienerabsetzbetrag) */
   partnerEinkuenfte: optMoney,
@@ -175,7 +231,7 @@ export interface Line {
 }
 
 export interface FormEntry {
-  formular: "L1" | "L1k" | "E1" | "E1a" | "E1b" | "E1kv";
+  formular: "L1" | "L1k" | "L1i" | "E1" | "E1a" | "E1b" | "E1kv" | "U1";
   kz: string;
   label: string;
   value: string;
@@ -216,8 +272,18 @@ export interface TaxResult {
   grenzsteuersatz: number;
   durchschnittssteuersatz: number;
   formular: FormEntry[];
+  /** Umsatzsteuer (eigene Erklärung U1, nicht Teil der Einkommensteuer) */
+  umsatzsteuer: {
+    umsatz: number;
+    grenze: number;
+    kleinunternehmer: boolean;
+    zahllast: number;
+    lines: Line[];
+  } | null;
+  /** Immobilienertragsteuer aus privaten Grundstücksverkäufen */
+  immoESt: { lines: Line[]; steuer: number; abgefuehrt: number; regelGuenstiger: boolean } | null;
   /** Ergebnis der Günstigerprüfung für Kapitalerträge */
-  kapitalOption: { empfohlen: boolean; erstattung: number; mehrsteuer: number } | null;
+  kapitalOption: { empfohlen: boolean; erstattung: number; mehrsteuer: number; verlustausgleich: number } | null;
   hinweise: string[];
   pflichtveranlagung: string[];
 }
