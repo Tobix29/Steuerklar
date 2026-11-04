@@ -15,6 +15,13 @@ npm run build && npm start        # Produktion
 
 Ohne `ANTHROPIC_API_KEY` läuft die Belegerkennung im **Demo-Modus** (liefert einen Beispiel-Lohnzettel L16).
 
+## Demo als Claude-Artifact (ohne Server)
+
+`node demo/build.mjs` baut dieselbe Oberfläche als reine Browser-App (`demo/dist`). Steuer-Engine, Beleg-Übernahme und
+PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des Artifacts, Daten liegen privat pro Person
+(`db`-Capability unter `data/users/<id>/`). Die Next.js-Seiten werden unverändert wiederverwendet, nur `next/link`,
+`next/navigation` und `@/lib/client/api` werden beim Bauen durch `demo/shims` bzw. `demo/api.ts` ersetzt.
+
 ## Architektur
 
 | Bereich | Datei(en) |

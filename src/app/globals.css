@@ -303,7 +303,7 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 .app-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
 .tabbar { display: none; }
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 1fr; }
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { display: none; }
   .app-main { padding: 20px 16px calc(100px + var(--safe-bottom)); }
   .tabbar {
