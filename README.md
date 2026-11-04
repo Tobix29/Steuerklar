@@ -50,6 +50,21 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 - **Web:** Strikte CSP mit Nonce + `strict-dynamic`, HSTS, `frame-ancestors 'none'`, COOP/CORP, Origin- und Sec-Fetch-Site-Prüfung, Zod-Validierung aller Eingaben, keine internen Fehlerdetails nach außen.
 - **KI:** Dokumentinhalte werden als Daten behandelt (Prompt-Injection-Regel), Ausgabe per Schema erzwungen und serverseitig plausibilisiert; jeder Wert muss bestätigt werden.
 
+## Was die App statt der Steuerberatung übernimmt
+
+| Bereich | Umsetzung |
+|---|---|
+| Erklärung | L1, L1k, L1i, E1, E1a, E1b, E1kv, U1 – Kennzahlen als Ausfüllhilfe, PDF |
+| Belege | Foto/PDF → KI erkennt Lohnzettel und Rechnungen; Kontoauszug-Import findet Absetzbares |
+| Optimierung | Spar-Check, Regelbesteuerungs-/Verlustausgleichsoption, Gewinnfreibeträge, Anlagenverzeichnis (AfA, GWG, Pkw) |
+| Planung | Rücklagen-Planer: ESt-Vorauszahlungen, SVS-Beiträge, UVA-Zahllast; alle Termine als Kalender (`/api/calendar?alle=1`) |
+| Nach der Abgabe | **Bescheid prüfen** (`/api/finanzamt/bescheid`): Bescheid auslesen, mit eigener Berechnung vergleichen, Beschwerde-Entwurf nach §§ 243/250 BAO mit Frist (§ 245 BAO, § 108 BAO inkl. Feiertage) und ggf. Aussetzungsantrag (§ 212a BAO) |
+| Post vom Amt | **Brief erklären** (`/api/finanzamt/post`): Ergänzungsersuchen, Vorhalt, Zahlungsaufforderung … → Zusammenfassung, Schritte, Unterlagen, Antwort-Entwurf |
+| Fragen | KI-Steuerassistent mit Fallkontext |
+
+**Bleibt der Steuerberatung vorbehalten (WTBG 2017):** Vertretung vor Finanzamt und Bundesfinanzgericht, Außenprüfungen,
+Finanzstrafverfahren, Haftung für die Richtigkeit. Die App weist bei solchen Schreiben ausdrücklich darauf hin.
+
 ## Vor dem Produktivbetrieb (offen)
 
 1. **Recht:** Positionierung als Selbsthilfe-Software (keine Steuerberatung i. S. d. WTBG 2017) anwaltlich prüfen lassen; AGB,
@@ -57,9 +72,11 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 2. **Steuerwerte verifizieren:** In `src/lib/tax/constants.ts` listet `unverified` je Jahr die Werte, die nur aus Sekundärquellen stammen
    (u. a. Höchstbeträge der SV-Rückerstattung, Einschleifgrenzen des VAB-Zuschlags 2026, Partner-Einkommensgrenze AVAB). Zuordnung
    der L1-Kennzahlen (`WK_KATEGORIEN`, Formular-Einträge) gegen das aktuelle Formular L1 prüfen. Annahme prüfen: KZ 245 ist um KZ 718 gekürzt.
-3. **Vereinfachungen:** Kindermehrbetrag vereinfacht; einzelne Pensions-Höchstbeträge geschätzt (siehe `unverified`).
-   Nicht abgedeckt: investitionsbedingter Gewinnfreibetrag, Umsatzsteuer, Verlustvorträge, Grundstücksveräußerungen (ImmoESt),
-   Verlustausgleichsoption Kapital, Jahressechstel-Überschreitung, Auslandseinkünfte.
+3. **Vereinfachungen:** Kindermehrbetrag vereinfacht; einzelne Pensions-Höchstbeträge geschätzt (siehe `unverified`); SVS-Werte
+   (Beitragssätze, Mindest-/Höchstbeitragsgrundlage) und UVA-Grenzen in `SVS`/`UVA` jährlich prüfen.
+   Nicht abgedeckt: Jahressechstel-Überschreitung, Bilanzierung (doppelte Buchhaltung), GmbH/Körperschaftsteuer, Lohnverrechnung
+   für Dienstnehmer:innen, E1a-Einzelkennzahlen (nur Gewinnsumme).
+
 4. **Übermittlung:** Eine direkte Abgabe in FinanzOnline durch Drittsoftware ist für Privatpersonen nicht vorgesehen – die App liefert
    eine Ausfüllhilfe mit Kennzahlen. Option: Kooperation mit Steuerberatungskanzlei (Vollmacht) für die Übermittlung.
 5. **Infrastruktur:** PostgreSQL in EU-Region, Master Key in KMS (mit Rotation), Rate Limiting über Redis, Pen-Test, Monitoring.
