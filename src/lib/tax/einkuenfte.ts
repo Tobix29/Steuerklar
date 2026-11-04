@@ -3,8 +3,29 @@
  *  - Vermietung und Verpachtung (Beilage E1b): Überschuss der Einnahmen über die Werbungskosten
  *  - Selbständige Arbeit / Gewerbebetrieb (Beilage E1a): Gewinn aus Einnahmen-Ausgaben-Rechnung oder Pauschalierung
  */
-import { VERMIETUNG, type YearParams } from "./constants";
+import { gwgGrenze, PKW, VERMIETUNG, type YearParams } from "./constants";
 import type { Betrieb, Line, Mietobjekt } from "./types";
+
+type Anlage = Betrieb["anlagen"][number];
+
+/** AfA eines Wirtschaftsguts im Jahr `year` (linear, Halbjahresregel, GWG-Sofortabschreibung, Pkw-Luxustangente). */
+export function anlageAfa(a: Anlage, year: number): { afa: number; restwert: number; gwg: boolean } {
+  const basis = a.pkw ? Math.min(a.kosten, PKW.luxusgrenze) : a.kosten;
+  const nd = a.pkw ? Math.max(a.nutzungsdauer, PKW.mindestNutzungsdauer) : a.nutzungsdauer;
+  if (year < a.anschaffungsjahr || basis <= 0) return { afa: 0, restwert: basis, gwg: false };
+  if (!a.pkw && a.kosten <= gwgGrenze(a.anschaffungsjahr)) {
+    return { afa: year === a.anschaffungsjahr ? cents(a.kosten) : 0, restwert: 0, gwg: true };
+  }
+  const jahres = basis / nd;
+  let rest = basis;
+  let afa = 0;
+  for (let y = a.anschaffungsjahr; y <= year && rest > 0.005; y++) {
+    const betrag = Math.min(rest, y === a.anschaffungsjahr && a.anschaffungsmonat > 6 ? jahres / 2 : jahres);
+    rest -= betrag;
+    if (y === year) afa = betrag;
+  }
+  return { afa: cents(afa), restwert: cents(Math.max(0, rest)), gwg: false };
+}
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 
@@ -78,6 +99,18 @@ export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Lin
     methode = `Kleinunternehmerpauschalierung ${rate * 100} %`;
   }
   lines.push({ label: `– Betriebsausgaben (${methode})`, amount: -ausgaben });
+  // Abschreibung laut Anlagenverzeichnis – bei Pauschalierung bereits abgegolten
+  if (b.anlagen.length) {
+    if (b.gewinnermittlung === "ear") {
+      const year = p.year;
+      const summe = cents(b.anlagen.reduce((s, a) => s + anlageAfa(a, year).afa * (1 - a.privatanteil / 100), 0));
+      if (summe > 0) {
+        ausgaben = cents(ausgaben + summe);
+        const gwg = b.anlagen.filter((a) => anlageAfa(a, year).gwg && a.anschaffungsjahr === year).length;
+        lines.push({ label: "– Abschreibung (AfA) laut Anlagenverzeichnis", amount: -summe, hint: gwg ? `inkl. ${gwg} geringwertige(s) Wirtschaftsgut/-güter sofort abgeschrieben` : undefined });
+      }
+    } else hinweise.push("Bei Pauschalierung ist die Abschreibung in der Pauschale enthalten – das Anlagenverzeichnis wirkt sich nicht aus.");
+  }
   if (b.sozialversicherung > 0) lines.push({ label: "– Sozialversicherung (SVS)", amount: -b.sozialversicherung });
   const vorGfb = cents(b.einnahmen - ausgaben - b.sozialversicherung);
   const gfb = vorGfb > 0 ? cents(Math.min(vorGfb, p.gewinnfreibetrag.bis) * p.gewinnfreibetrag.rate) : 0;

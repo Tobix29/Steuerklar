@@ -334,11 +334,29 @@ export function kleinunternehmerUst(year: number): { grenze: number; brutto: boo
 /** Immobilienertragsteuer (§30a EStG): 30 %; Altvermögen pauschal 4,2 % (umgewidmet 18 %) des Erlöses, bis 2026 */
 export const IMMOEST = { satz: 0.3, altPauschal: 0.042, altUmgewidmet: 0.18, altBasis: 0.14, altBasisUmgewidmet: 0.6 };
 
+/** Geringwertige Wirtschaftsgüter: sofort absetzbar bis (§13 EStG) – 800 € bis 2022, 1.000 € ab 2023 */
+export const gwgGrenze = (year: number) => (year >= 2023 ? 1000 : 800);
+/** Pkw: Angemessenheitsgrenze (Luxustangente) und Mindestnutzungsdauer (§8 Abs 6, §20 Abs 1 Z 2 lit b EStG) */
+export const PKW = { luxusgrenze: 40_000, mindestNutzungsdauer: 8 };
+
+/** Sozialversicherung der Selbständigen (GSVG) – jährliche Werte; 2025 vorläufig wie 2026 (zu verifizieren) */
+export const SVS = {
+  pv: 0.185,
+  kv: 0.068,
+  vorsorge: 0.0153,
+  uvMonat: 12.95,
+  mindestMonat: 551.1,
+  hoechstMonat: 8085,
+};
+
+/** Umsatzsteuervoranmeldung: monatlich ab 100.000 € Vorjahresumsatz; Abgabepflicht ab 55.000 € (bis 2024: 35.000 €) */
+export const UVA = { monatlichAb: 100_000, abgabepflichtAb: (year: number) => (year >= 2025 ? 55_000 : 35_000) };
+
 /** Veranlagungsfreibetrag für Nebeneinkünfte (§41 Abs 3 EStG), eingeschliffen bis zum Doppelten */
 export const VERANLAGUNGSFREIBETRAG = 730;
 
 /** Stammt nicht aus Primärquellen geprüft – vor Produktivbetrieb verifizieren (gilt jahresübergreifend). */
-export const UNVERIFIED_GLOBAL = ["VERMIETUNG.neubauFaktor", "IMMOEST.altBasis (Regelbesteuerung Altvermögen)"];
+export const UNVERIFIED_GLOBAL = ["VERMIETUNG.neubauFaktor", "IMMOEST.altBasis (Regelbesteuerung Altvermögen)", "SVS-Werte (Stand 2026)"];
 
 /** Selbstbehalt bei außergewöhnlichen Belastungen (§34 Abs 4 EStG) */
 export const SELBSTBEHALT = [

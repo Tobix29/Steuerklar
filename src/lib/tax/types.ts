@@ -84,6 +84,25 @@ export const BetriebSchema = z.object({
   sozialversicherung: optMoney,
   /** Basispauschalierung: Tätigkeit mit reduziertem Satz (z. B. Beratung, Vortrag, Schriftsteller) */
   reduzierterSatz: z.boolean().default(false),
+  /** Anlagenverzeichnis: abnutzbares Anlagevermögen (Computer, Möbel, Auto …) – Abschreibung über die Nutzungsdauer */
+  anlagen: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        bezeichnung: z.string().max(200).default(""),
+        anschaffungsjahr: z.number().int().min(1990).max(2100),
+        anschaffungsmonat: z.number().int().min(1).max(12).default(1),
+        /** Anschaffungskosten (netto, wenn Vorsteuerabzug möglich) */
+        kosten: money,
+        nutzungsdauer: z.number().int().min(1).max(50).default(3),
+        /** Privater Nutzungsanteil in % */
+        privatanteil: z.number().min(0).max(100).default(0),
+        /** Pkw: Luxustangente 40.000 € und mindestens 8 Jahre Nutzungsdauer */
+        pkw: z.boolean().default(false),
+      }),
+    )
+    .max(100)
+    .default([]),
   /** Begünstigte Investitionen (abnutzbare Anlagen, Wohnbauanleihen u. a.) für den investitionsbedingten Gewinnfreibetrag */
   investitionen: optMoney,
   /** Kleinunternehmerpauschalierung: Dienstleistungsbetrieb (20 % statt 45 %) */
