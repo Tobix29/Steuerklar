@@ -4,7 +4,9 @@ import { useCase } from "~/lib/case";
 import { eur, uid } from "~/lib/format";
 import { BUNDESLAENDER, WK_LABELS, type WkKategorie } from "~/lib/labels";
 import { useColors } from "~/lib/theme";
-import type { TaxCase } from "~/lib/types";
+import { YEAR_PARAMS, type TaxCase } from "~/lib/types";
+import { WeitereEinkuenfte } from "~/components/WeitereEinkuenfte";
+import { behinderungPauschbetrag } from "@core/tax/calculate";
 
 const WK_OPTIONS = (Object.keys(WK_LABELS) as WkKategorie[]).map((k) => ({ value: k, label: WK_LABELS[k] }));
 
@@ -13,11 +15,13 @@ export default function Profil() {
   const { data, update, year, saveState, error } = useCase();
   if (!data) return <Loading />;
   const set = (fn: (d: TaxCase) => void) => update(fn);
+  const p = YEAR_PARAMS[year];
+  const hasPension = data.lohnzettel.some((l) => l.art === "pension");
 
   return (
     <Screen webTitle="Über dich">
       <Text style={{ color: saveState === "error" ? c.red : c.muted, fontSize: 13, textAlign: "center" }}>
-        {saveState === "saving" ? "Speichert …" : saveState === "saved" ? "✓ Automatisch gespeichert" : saveState === "error" ? error ?? "Fehler beim Speichern" : `Arbeitnehmerveranlagung ${year}`}
+        {saveState === "saving" ? "Speichert …" : saveState === "saved" ? "✓ Automatisch gespeichert" : saveState === "error" ? error ?? "Fehler beim Speichern" : `${data.mietobjekte.length || data.betriebe.length ? "Einkommensteuererklärung" : "Arbeitnehmerveranlagung"} ${year}`}
       </Text>
 
       <Section title="Persönliches">
@@ -76,6 +80,16 @@ export default function Profil() {
               ]}
             />
           </View>
+          {year - k.birthYear >= 15 && (
+            <NumberRow
+              label="Auswärtige Berufsausbildung"
+              sublabel="Monate, kein Ausbildungsort im Umkreis von 80 km – 110 € pro Monat"
+              value={k.auswaertigeAusbildungMonate}
+              max={12}
+              suffix="Mon."
+              onChange={(v) => set((d) => void (d.children[i]!.auswaertigeAusbildungMonate = v))}
+            />
+          )}
           <Row label="Kind entfernen" destructive onPress={() => set((d) => void d.children.splice(i, 1))} />
         </Section>
       ))}
@@ -84,6 +98,63 @@ export default function Profil() {
         variant="secondary"
         onPress={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1, auswaertigeAusbildungMonate: 0 }))}
       />
+
+      <Section title="Unterhalt" footer="Für Kinder, die nicht bei dir wohnen und für die du gesetzlichen Unterhalt zahlst (Unterhaltsabsetzbetrag). Zusätzlich kannst du den halben Familienbonus beantragen – das Kind dafür oben mit „Hälfte“ eintragen.">
+        {data.unterhaltKinder.map((k, i) => (
+          <View key={k.id}>
+            <TextRow label={`Kind ${i + 1}`} value={k.firstName} placeholder="Vorname" onChangeText={(v) => set((d) => void (d.unterhaltKinder[i]!.firstName = v.slice(0, 100)))} />
+            <NumberRow
+              label="Monate mit Unterhalt"
+              sublabel={`${eur(p.uab[Math.min(i, 2)]!)} pro Monat`}
+              value={k.months}
+              max={12}
+              suffix="Mon."
+              onChange={(v) => set((d) => void (d.unterhaltKinder[i]!.months = v))}
+            />
+            <Row label="Entfernen" destructive onPress={() => set((d) => void d.unterhaltKinder.splice(i, 1))} />
+          </View>
+        ))}
+        <Row label="+ Kind mit Unterhalt" onPress={() => set((d) => void d.unterhaltKinder.push({ id: uid(), firstName: "", months: 12 }))} />
+      </Section>
+
+      {hasPension && (
+        <Section title="Pension">
+          <SwitchRow
+            label="Erhöhter Pensionistenabsetzbetrag"
+            sublabel={`Ehe/Partnerschaft, Partnereinkünfte bis ${eur(p.pension.partnerLimit, 0)}, kein Alleinverdienerabsetzbetrag`}
+            value={data.pensionErhoeht}
+            onValueChange={(v) => set((d) => void (d.pensionErhoeht = v))}
+          />
+          {data.pensionErhoeht && <MoneyRow label="Einkünfte Partner:in" value={data.partnerEinkuenfte} onChange={(v) => set((d) => void (d.partnerEinkuenfte = v))} />}
+        </Section>
+      )}
+
+      <Section title="Arbeiten fern von zu Hause">
+        <MoneyRow label="Doppelte Haushaltsführung" sublabel="Zweitwohnung am Arbeitsort (KZ 723)" value={data.doppelteHaushaltsfuehrung} onChange={(v) => set((d) => void (d.doppelteHaushaltsfuehrung = v))} />
+        <MoneyRow label="Familienheimfahrten" sublabel={`max. ${eur(p.pendlerGross.from60, 0)} pro Jahr (KZ 300)`} value={data.familienheimfahrten} onChange={(v) => set((d) => void (d.familienheimfahrten = v))} />
+      </Section>
+
+      <Section title="Behinderung" footer="Ab 25 % laut Bescheid des Sozialministeriumservice – Pauschbetrag ohne Selbstbehalt.">
+        <NumberRow
+          label="Grad der Behinderung"
+          sublabel={data.behinderungGrad >= 25 ? `Pauschbetrag ${eur(behinderungPauschbetrag(data.behinderungGrad), 0)} pro Jahr` : undefined}
+          value={data.behinderungGrad}
+          max={100}
+          suffix="%"
+          onChange={(v) => set((d) => void (d.behinderungGrad = v))}
+        />
+        {data.behinderungGrad >= 25 && (
+          <SwitchRow label="Eigenes Kfz wegen Gehbehinderung" sublabel="190 € pro Monat" value={data.behinderungKfz} onValueChange={(v) => set((d) => void (d.behinderungKfz = v))} />
+        )}
+      </Section>
+
+      <Section title="Kapitalerträge" footer="Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück – Steuerklar rechnet, ob es sich lohnt.">
+        <MoneyRow label="Erträge mit 27,5 % KESt" sublabel="Dividenden, Fonds, Kursgewinne" value={data.kapital.ertraege275} onChange={(v) => set((d) => void (d.kapital.ertraege275 = v))} />
+        <MoneyRow label="Zinsen mit 25 % KESt" sublabel="Sparbuch, Festgeld" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
+        <MoneyRow label="Bereits abgezogene KESt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
+      </Section>
+
+      <WeitereEinkuenfte data={data} set={set} year={year} />
 
       <Section title="Werbungskosten" footer="Am einfachsten: Rechnungen unter „Belege“ fotografieren. Bis 132 € gilt automatisch die Pauschale.">
         {data.werbungskosten.map((w, i) =>
@@ -102,7 +173,7 @@ export default function Profil() {
       </Section>
 
       <Section title="Sonderausgaben" footer="Kirchenbeitrag und Spenden werden von Kirche bzw. Organisation automatisch ans Finanzamt gemeldet – hier nur für die Prognose.">
-        <MoneyRow label="Kirchenbeitrag" sublabel="max. 600 € pro Jahr" value={data.kirchenbeitrag} onChange={(v) => set((d) => void (d.kirchenbeitrag = v))} />
+        <MoneyRow label="Kirchenbeitrag" sublabel={`max. ${eur(p.kirchenbeitragMax, 0)} pro Jahr (${year})`} value={data.kirchenbeitrag} onChange={(v) => set((d) => void (d.kirchenbeitrag = v))} />
       </Section>
     </Screen>
   );

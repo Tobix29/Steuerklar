@@ -1,19 +1,20 @@
 import { router } from "expo-router";
 import { Text, View } from "react-native";
-import { Badge, Button, Card, Loading, Notice, Row, Screen, Section, Segmented, useTextStyles } from "~/components/ui";
+import { Badge, Button, Card, Loading, Notice, Row, Screen, Section, useTextStyles } from "~/components/ui";
+import { YearChips, YearsOverview } from "~/components/YearsOverview";
 import { useCase } from "~/lib/case";
 import { eur } from "~/lib/format";
 import { useColors } from "~/lib/theme";
-import { SUPPORTED_YEARS, type TaxYear } from "~/lib/types";
+import { insights } from "@core/tax/insights";
 
 export default function Uebersicht() {
   const c = useColors();
   const t = useTextStyles();
-  const { data, result, year, setYear, documentCount, error, loading, reload } = useCase();
+  const { data, result, year, documentCount, error, loading, reload } = useCase();
 
   if (!data || !result) return error ? <Screen webTitle="Übersicht"><Notice tone="red" text={error} /></Screen> : <Loading />;
 
-  const hasLz = data.lohnzettel.length > 0;
+  const hasLz = data.lohnzettel.length > 0 || data.mietobjekte.length > 0 || data.betriebe.length > 0;
   const hasDeductions = data.pendlerKm > 0 || data.telearbeitstage > 0 || data.werbungskosten.length > 0 || data.children.length > 0;
   const steps = [
     { title: "Über dich", text: "Arbeitsweg, Homeoffice, Kinder", done: !!data.firstName, href: "/profil" as const },
@@ -24,7 +25,8 @@ export default function Uebersicht() {
   const done = steps.filter((s) => s.done).length;
   const refund = result.erstattung;
 
-  const tips: { icon: string; text: string; href: "/profil" | "/belege" }[] = [];
+  const tips: { icon: string; text: string; href: "/profil" | "/belege" | "/ergebnis" }[] = [];
+  if (hasLz) for (const x of insights(data, result).tips.filter((x) => x.key !== "grenz").slice(0, 2)) tips.push({ icon: x.icon, text: x.title, href: "/ergebnis" });
   if (hasLz && data.pendlerKm === 0) tips.push({ icon: "🚆", text: "Pendelst du zur Arbeit? Pendlerpauschale und Pendlereuro senken deine Steuer.", href: "/profil" });
   if (hasLz && data.telearbeitstage === 0) tips.push({ icon: "🏠", text: "Im Homeoffice gearbeitet? Bis zu 300 € Telearbeitspauschale plus Mobiliar.", href: "/profil" });
   if (hasLz && data.werbungskosten.length === 0) tips.push({ icon: "💻", text: "Laptop, Fachbücher, Kurse? Werbungskosten über 132 € bringen Geld zurück.", href: "/belege" });
@@ -32,7 +34,7 @@ export default function Uebersicht() {
 
   return (
     <Screen webTitle="Übersicht" onRefresh={reload} refreshing={loading}>
-      <Segmented<TaxYear> value={year} onChange={setYear} options={SUPPORTED_YEARS.map((y) => ({ value: y, label: y === 2026 ? "2026 · Prognose" : String(y) }))} />
+      <YearChips />
 
       <Card style={{ alignItems: "center", gap: 6, paddingVertical: 28 }}>
         <Text style={t.muted}>{refund >= 0 ? "Voraussichtliche Gutschrift" : "Voraussichtliche Nachforderung"}</Text>
@@ -40,13 +42,15 @@ export default function Uebersicht() {
           {hasLz ? eur(Math.abs(refund), 0) : "– €"}
         </Text>
         <Text style={[t.muted, { textAlign: "center", fontSize: 13 }]}>
-          {hasLz ? `Arbeitnehmerveranlagung ${year} · wird live neu berechnet` : "Lade deinen Lohnzettel hoch, um deine Gutschrift zu sehen."}
+          {hasLz ? `${result.e1Erforderlich ? "Einkommensteuererklärung" : "Arbeitnehmerveranlagung"} ${year} · wird live neu berechnet` : "Lade deinen Lohnzettel hoch, um deine Gutschrift zu sehen."}
         </Text>
         <View style={{ flexDirection: "row", gap: 10, marginTop: 14, flexWrap: "wrap", justifyContent: "center" }}>
           <Button title="📸 Beleg fotografieren" onPress={() => router.navigate("/belege")} />
           {hasLz && <Button title="Details" variant="secondary" onPress={() => router.navigate("/ergebnis")} />}
         </View>
       </Card>
+
+      <YearsOverview />
 
       <Section title={`Fortschritt · ${done} von ${steps.length}`}>
         {steps.map((s) => (

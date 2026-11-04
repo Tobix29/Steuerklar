@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
+import { fetch as streamingFetch } from "expo/fetch";
 import { API } from "./config";
 
 export class ApiError extends Error {
@@ -107,4 +108,48 @@ export function removeLocalFile(uri: string) {
   } catch {
     /* bereits gelöscht */
   }
+}
+
+/**
+ * Steuerassistent: Die Antwort wird gestreamt. `expo/fetch` liefert – anders als das globale
+ * React-Native-fetch – einen lesbaren Body-Stream. `onText` erhält jeweils die ganze bisherige Antwort.
+ */
+export async function askAssistant(
+  messages: { role: "user" | "assistant"; content: string }[],
+  year: number,
+  onText: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (API.error) throw new ApiError(0, API.error);
+  let res;
+  try {
+    res = await streamingFetch(`${API.url}/api/assistant`, {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json", Accept: "text/plain" }),
+      body: JSON.stringify({ year, messages }),
+      credentials: "omit",
+      signal,
+    });
+  } catch {
+    if (signal?.aborted) throw Object.assign(new Error("abgebrochen"), { name: "AbortError" });
+    throw new ApiError(0, "Keine Verbindung zum Server.");
+  }
+  if (res.status === 401) {
+    onUnauthorized?.();
+    throw new ApiError(401, "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.");
+  }
+  if (!res.ok || !res.body) {
+    const data = res.headers.get("content-type")?.includes("application/json") ? await res.json().catch(() => null) : null;
+    throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? "Der Assistent ist gerade nicht erreichbar.");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+    onText(text);
+  }
+  return text;
 }

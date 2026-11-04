@@ -2,6 +2,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Badge, Button, Card, Notice, Row, Screen, Section, useTextStyles } from "~/components/ui";
+import { BankImport } from "~/components/BankImport";
 import { api, removeLocalFile, uploadDocument } from "~/lib/api";
 import { useCase } from "~/lib/case";
 import { pickDocument, type Source } from "~/lib/documents";
@@ -25,6 +26,7 @@ export default function Belege() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +100,9 @@ export default function Belege() {
           </View>
         </View>
       </Card>
+
+      <BankImport onDone={setInfo} />
+      {info && <Notice tone="green" icon="✓" text={info} />}
 
       {uploads.length > 0 && (
         <Section title="Wird analysiert">

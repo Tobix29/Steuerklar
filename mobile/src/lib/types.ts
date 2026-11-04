@@ -20,9 +20,10 @@ export interface StoredDocument {
   appliedAmount?: number;
 }
 
-export type TaxYear = 2024 | 2025 | 2026;
-export const SUPPORTED_YEARS: TaxYear[] = [2024, 2025, 2026];
-export const DEFAULT_YEAR: TaxYear = 2025;
+// Laufzeit-Importe aus der reinen Steuer-Engine (siehe metro.config.js)
+export { SUPPORTED_YEARS, DEFAULT_YEAR, YEAR_PARAMS, fristen, type TaxYear } from "@core/tax/constants";
+export type { Mietobjekt, Betrieb } from "@core/tax/types";
+export type { BankFinding } from "@core/ai/bank";
 
 export interface Me {
   email: string;

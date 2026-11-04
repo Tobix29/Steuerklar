@@ -10,6 +10,8 @@ import { FINANZONLINE_URL } from "~/lib/config";
 import { eur, pct } from "~/lib/format";
 import { useColors } from "~/lib/theme";
 import type { Line } from "~/lib/types";
+import { insights } from "@core/tax/insights";
+import { router } from "expo-router";
 
 const minus = (n: number) => `− ${eur(n)}`;
 
@@ -27,12 +29,15 @@ export default function Ergebnis() {
   useSensitiveScreen("ergebnis");
   const c = useColors();
   const t = useTextStyles();
-  const { result: r, year, reload, loading } = useCase();
+  const { result: r, data, year, reload, loading } = useCase();
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!r) return <Loading />;
-  const hasIncome = r.laufendeBezuege > 0;
+  if (!r || !data) return <Loading />;
+  const hasIncome = r.laufendeBezuege > 0 || r.weitereEinkuenfte.length > 0;
+  const spar = hasIncome ? insights(data, r) : null;
+  const maxEffect = Math.max(1, ...(spar?.contributions.map((x) => x.effect) ?? [1]));
+  const formName = r.e1Erforderlich ? "Einkommensteuererklärung" : "Arbeitnehmerveranlagung";
   const refund = r.erstattung;
 
   async function sharePdf() {
@@ -42,7 +47,7 @@ export default function Ergebnis() {
       if (Platform.OS === "web") throw new Error("Das PDF kann in der Web-Vorschau nicht geteilt werden – bitte die App verwenden.");
       const uri = await downloadPdf(year);
       if (!(await Sharing.isAvailableAsync())) throw new Error("Teilen ist auf diesem Gerät nicht verfügbar.");
-      await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `Arbeitnehmerveranlagung ${year}` });
+      await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `${formName} ${year}` });
       removeLocalFile(uri);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Das PDF konnte nicht erstellt werden.");
@@ -66,11 +71,48 @@ export default function Ergebnis() {
         {r.provisional && <Text style={[t.muted, { fontSize: 12, marginTop: 8 }]}>Prognose – einzelne Parameter noch nicht amtlich verifiziert.</Text>}
       </Card>
 
+      {spar && spar.contributions.length > 0 && (
+        <Section title="Spar-Check · was dir was bringt">
+          {spar.contributions.map((x) => (
+            <View key={x.key} style={{ paddingHorizontal: 16, paddingVertical: 12, gap: 6 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                <Text style={{ color: c.text, fontSize: 16, flex: 1 }}>{x.label}</Text>
+                <Text style={{ color: c.green, fontSize: 16, fontWeight: "600", fontVariant: ["tabular-nums"] }}>+ {eur(x.effect)}</Text>
+              </View>
+              <View style={{ height: 4, borderRadius: 2, backgroundColor: c.surface2, overflow: "hidden" }}>
+                <View style={{ width: `${Math.max(2, (x.effect / maxEffect) * 100)}%`, height: 4, backgroundColor: c.green }} />
+              </View>
+            </View>
+          ))}
+        </Section>
+      )}
+      {spar?.tips.map((x) => (
+        <Card key={x.key} style={{ gap: 6 }}>
+          <Text style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>{x.icon}  {x.title}</Text>
+          <Text style={t.muted}>{x.text}</Text>
+          {x.href && (
+            <Text style={{ color: c.accent, fontSize: 15 }} onPress={() => router.navigate(x.href === "/app/belege" ? "/belege" : "/profil")} accessibilityRole="link">
+              Jetzt anpassen ›
+            </Text>
+          )}
+        </Card>
+      ))}
+
       <Section title="Einkünfte">
         <Row label="Laufende Bezüge" sublabel="KZ 245 laut Lohnzettel" value={eur(r.laufendeBezuege)} />
         <Lines items={r.werbungskosten} sign="−" />
         <Row label="Einkünfte" value={eur(r.einkuenfte)} strong />
       </Section>
+
+      {r.weitereEinkuenfte.length > 0 && (
+        <Section title="Weitere Einkünfte (E1)">
+          {r.weitereEinkuenfte.map((l, i) => (
+            <Row key={`${l.label}-${i}`} label={l.label} sublabel={l.hint} value={eur(l.amount)} strong={l.label.startsWith("Einkünfte")} />
+          ))}
+          {r.veranlagungsfreibetrag > 0 ? <Row label="Veranlagungsfreibetrag" sublabel="Nebeneinkünfte bis 730 € steuerfrei" value={minus(r.veranlagungsfreibetrag)} /> : null}
+          <Row label="Gesamtbetrag der Einkünfte" value={eur(r.gesamtbetragDerEinkuenfte)} strong />
+        </Section>
+      )}
 
       {(r.sonderausgaben.length > 0 || r.aussergewoehnlicheBelastungen.length > 0) && (
         <Section title="Sonderausgaben & Belastungen">
@@ -93,7 +135,14 @@ export default function Ergebnis() {
       </Section>
 
       {r.formular.length > 0 && (
-        <Section title="So trägst du es in FinanzOnline ein" footer="Formular L1 (Arbeitnehmerveranlagung) und je Kind L1k. Daten aus dem Lohnzettel, Spenden und Kirchenbeitrag hat das Finanzamt bereits.">
+        <Section
+          title="So trägst du es in FinanzOnline ein"
+          footer={
+            r.e1Erforderlich
+              ? "Einkommensteuererklärung E1 mit den Beilagen E1a (Betrieb) bzw. E1b (Vermietung), je Kind L1k. Daten aus dem Lohnzettel, Spenden und Kirchenbeitrag hat das Finanzamt bereits."
+              : "Formular L1 (Arbeitnehmerveranlagung) und je Kind L1k. Daten aus dem Lohnzettel, Spenden und Kirchenbeitrag hat das Finanzamt bereits."
+          }
+        >
           {r.formular.map((f, i) => (
             <Row key={i} label={f.label} sublabel={`${f.formular}${f.kz && f.kz !== "—" ? ` · KZ ${f.kz}` : ""}`} value={f.value} />
           ))}

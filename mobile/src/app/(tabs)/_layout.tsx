@@ -21,6 +21,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Ergebnis</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} md="bar_chart" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="fragen">
+        <NativeTabs.Trigger.Label>Fragen</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} md="chat" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="konto">
         <NativeTabs.Trigger.Label>Konto</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} md="settings" />

@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Text, View } from "react-native";
-import { Badge, Button, ChoiceRow, Loading, MoneyRow, NumberRow, Notice, Screen, Section, TextRow } from "~/components/ui";
+import { Badge, Button, ChoiceRow, Loading, MoneyRow, NumberRow, Notice, Screen, Section, TextRow, SwitchRow } from "~/components/ui";
 import { api } from "~/lib/api";
 import { useSensitiveScreen } from "~/lib/appLock";
 import { useCase } from "~/lib/case";
@@ -60,7 +60,7 @@ export default function BelegPruefen() {
         beleg: type !== "lohnzettel" ? (e.beleg ?? { betrag: null, datum: null, beschreibung: "", empfaenger: null, wkKategorie: null, beruflicherAnteil: null }) : e.beleg,
       },
     );
-  const setLz = (k: keyof LohnzettelFields, v: number | string | null) => setEx((e) => e && { ...e, lohnzettel: { ...(e.lohnzettel ?? emptyLz()), [k]: v } });
+  const setLz = (k: keyof LohnzettelFields, v: number | string | boolean | null) => setEx((e) => e && { ...e, lohnzettel: { ...(e.lohnzettel ?? emptyLz()), [k]: v } });
   const setBeleg = (patch: Partial<NonNullable<Extraction["beleg"]>>) => setEx((e) => e && e.beleg ? { ...e, beleg: { ...e.beleg, ...patch } } : e);
 
   async function save(applied: boolean) {
@@ -113,6 +113,7 @@ export default function BelegPruefen() {
       {ex.documentType === "lohnzettel" && lz && (
         <Section title="Lohnzettel L16" footer="Bitte vergleiche jede Kennzahl mit deinem Lohnzettel.">
           <TextRow label="Arbeitgeber" value={lz.arbeitgeber ?? ""} editable={!locked} onChangeText={(v) => setLz("arbeitgeber", v)} />
+          <SwitchRow label="Lohnzettel über meine Pension" sublabel="z. B. von der Pensionsversicherungsanstalt" value={!!lz.istPension} disabled={locked} onValueChange={(v) => setLz("istPension", v)} />
           {LZ_FIELDS.map(([k, label, kz]) => (
             <MoneyRow key={k} label={label} sublabel={kz ? `KZ ${kz}` : undefined} value={Number(lz[k] ?? 0)} editable={!locked} onChange={(v) => setLz(k, v)} />
           ))}
