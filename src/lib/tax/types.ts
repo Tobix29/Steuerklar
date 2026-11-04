@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BUNDESLAENDER, SUPPORTED_YEARS, WK_KATEGORIEN, type TaxYear, type WkKategorie } from "./constants";
+import { E1A_KEYS } from "./journal";
 
 const money = z.number().finite().min(0).max(100_000_000);
 const optMoney = money.default(0);
@@ -84,6 +85,23 @@ export const BetriebSchema = z.object({
   sozialversicherung: optMoney,
   /** Basispauschalierung: Tätigkeit mit reduziertem Satz (z. B. Beratung, Vortrag, Schriftsteller) */
   reduzierterSatz: z.boolean().default(false),
+  /** Einnahmen-Ausgaben-Journal: wenn vorhanden, ersetzen die Summen Einnahmen, Ausgaben, Vorsteuer und SVS */
+  buchungen: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        kategorie: z.enum(E1A_KEYS),
+        beschreibung: z.string().max(200).default(""),
+        /** Nettobetrag (ohne USt); bei Kleinunternehmer-Einnahmen der Rechnungsbetrag */
+        netto: money,
+        /** Umsatzsteuer bzw. Vorsteuer laut Rechnung */
+        ust: optMoney,
+        privatanteil: z.number().min(0).max(100).default(0),
+      }),
+    )
+    .max(3000)
+    .default([]),
   /** Anlagenverzeichnis: abnutzbares Anlagevermögen (Computer, Möbel, Auto …) – Abschreibung über die Nutzungsdauer */
   anlagen: z
     .array(

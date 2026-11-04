@@ -89,3 +89,11 @@ export function erklaereBrief(file: File, year: number) {
   fd.append("year", String(year));
   return api<{ post: FaPost }>("/api/finanzamt/post", { method: "POST", body: fd });
 }
+
+/** Rechnung/Kassenbon für das Journal auslesen (wird nicht gespeichert). */
+export function scanBuchung(file: File, year: number) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("year", String(year));
+  return api<{ buchung: import("@/lib/ai/buchung").BuchungScan }>("/api/buchhaltung/scan", { method: "POST", body: fd });
+}

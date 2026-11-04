@@ -14,6 +14,8 @@ import { store } from "./store";
 import { pdfToImages } from "./pdf";
 import { fristIcs, termineIcs } from "@/lib/tax/calendar";
 import { termine } from "@/lib/tax/planer";
+import { journalCsv } from "@/lib/tax/journal";
+import { buchungInstructions, BuchungScanSchema, sanitizeBuchung, type BuchungScan } from "@/lib/ai/buchung";
 import { BESCHEID_INSTRUCTIONS, BescheidSchema, compareBescheid, postInstructions, PostSchema, type Bescheid, type BescheidPruefung, type Post } from "@/lib/ai/finanzamt";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
 import { BankResultSchema, bankInstructions, prepareCsv, type BankFinding } from "@/lib/ai/bank";
@@ -220,6 +222,13 @@ export async function download(path: string): Promise<string> {
       data = fristIcs(year);
       filename = `Frist-Arbeitnehmerveranlagung-${year}.ics`;
     }
+  } else if (url.pathname === "/api/buchhaltung/csv") {
+    const year = parseYear(url.searchParams.get("year"));
+    const c = await s.getCase(year);
+    const b = c.betriebe.find((x) => x.id === url.searchParams.get("betrieb")) ?? c.betriebe[0];
+    if (!b) return "Kein Betrieb angelegt.";
+    data = "\uFEFF" + journalCsv(b.buchungen.filter((x) => x.datum.startsWith(`${year}-`)));
+    filename = `Journal-${year}.csv`;
   } else if (url.pathname === "/api/account/export") {
     const years = [];
     for (const y of SUPPORTED_YEARS) years.push({ year: y, case: await s.getCase(y), documents: await s.listDocs(y) });
@@ -339,4 +348,9 @@ export async function erklaereBrief(file: File, year: number): Promise<{ post: P
     `<fall>\n${caseContext(c, calculate(c))}\n</fall>\n\nErkläre das beigefügte Schreiben und entwirf die Antwort.`,
   );
   return { post };
+}
+
+export async function scanBuchung(file: File, year: number): Promise<{ buchung: BuchungScan }> {
+  const b = await readLetter(file, BuchungScanSchema, buchungInstructions(year), "Erfasse den beigefügten Beleg.");
+  return { buchung: sanitizeBuchung(b) };
 }

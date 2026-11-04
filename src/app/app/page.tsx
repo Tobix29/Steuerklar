@@ -66,6 +66,14 @@ export default function Overview() {
 
       <RuecklagenPlaner data={data} result={result} />
 
+      {data.betriebe.length > 0 && (
+        <Link href="/app/buchhaltung" className="list-item card" style={{ color: "var(--text)" }}>
+          <span className="icon-tile">📒</span>
+          <span className="grow">Buchhaltung<div className="tiny muted">{data.betriebe.reduce((a, b) => a + b.buchungen.length, 0)} Buchungen · Belege fotografieren und laufend erfassen</div></span>
+          <span className="muted">›</span>
+        </Link>
+      )}
+
       <section className="stack">
         <div className="row-between">
           <h2 className="title-2">Dein Fortschritt</h2>

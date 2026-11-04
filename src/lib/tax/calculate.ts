@@ -11,6 +11,7 @@
  * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
 import { betrieb, vermietung, veranlagungsfreibetrag } from "./einkuenfte";
+import { mitJournal } from "./journal";
 import { IMMOEST, kleinunternehmerUst, SONSTIGE, VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
 import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
@@ -96,7 +97,9 @@ export function verkehrsabsetzbetrag(einkommen: number, p: YearParams): { vab: n
   return { vab: p.vab, zuschlag };
 }
 
-export function calculate(input: TaxCase): TaxResult {
+export function calculate(raw: TaxCase): TaxResult {
+  // Betriebe mit Einnahmen-Ausgaben-Journal: Summen aus den Buchungen übernehmen
+  const input = mitJournal(raw);
   const year = input.year as TaxYear;
   const p = YEAR_PARAMS[year];
   const lz = input.lohnzettel;

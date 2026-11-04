@@ -5,13 +5,14 @@ import { api } from "@/lib/client/api";
 import { fristen, SUPPORTED_YEARS, type TaxYear } from "@/lib/tax/constants";
 import { CaseProvider, useCase } from "./CaseContext";
 
-const NAV = [
+const NAV: { href: string; label: string; icon: string; nurDesktop?: boolean }[] = [
   { href: "/app", label: "Übersicht", icon: "🏠" },
   { href: "/app/profil", label: "Über dich", icon: "👤" },
   { href: "/app/belege", label: "Belege", icon: "📸" },
   { href: "/app/ergebnis", label: "Ergebnis", icon: "📊" },
   { href: "/app/assistent", label: "Fragen", icon: "💬" },
   { href: "/app/finanzamt", label: "Finanzamt", icon: "🏛️" },
+  { href: "/app/buchhaltung", label: "Buchhaltung", icon: "📒", nurDesktop: true },
   { href: "/app/konto", label: "Konto", icon: "⚙️" },
 ];
 
@@ -83,7 +84,7 @@ export function AppShell({ email, children }: { email: string; children: React.R
           {children}
         </main>
         <nav className="tabbar" aria-label="App-Navigation">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !n.nurDesktop).map((n) => (
             <Link key={n.href} href={n.href} aria-current={isActive(n.href) ? "page" : undefined}>
               <span className="ico" aria-hidden="true">{n.icon}</span>
               {n.label}

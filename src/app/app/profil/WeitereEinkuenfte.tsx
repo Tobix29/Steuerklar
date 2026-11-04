@@ -1,8 +1,10 @@
 "use client";
+import Link from "next/link";
 import { MoneyInput, NumberInput, Segmented, Toggle } from "@/components/ui";
 import { eur, uid } from "@/lib/client/api";
 import { gwgGrenze, YEAR_PARAMS } from "@/lib/tax/constants";
 import { anlageAfa, betrieb, gebaeudeAfa, vermietung } from "@/lib/tax/einkuenfte";
+import { mitJournal } from "@/lib/tax/journal";
 import { BetriebSchema, MietobjektSchema, type TaxCase } from "@/lib/tax/types";
 import type { TaxYear } from "@/lib/tax/constants";
 
@@ -114,7 +116,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
       })}
 
       {data.betriebe.map((b, i) => {
-        const r = betrieb(b, p);
+        const r = betrieb(b.buchungen.length ? mitJournal(data).betriebe[i]! : b, p);
         const upd = (fn: (x: (typeof data.betriebe)[number]) => void) => set((d) => fn(d.betriebe[i]!));
         return (
           <div key={b.id} className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
@@ -126,9 +128,18 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <Row label="Art">
                 <Segmented label="Art" value={b.art} options={[{ value: "selbstaendig", label: "Selbständig" }, { value: "gewerbe", label: "Gewerbe" }]} onChange={(v) => upd((x) => void (x.art = v))} />
               </Row>
+              <div className="list-item" style={{ flexWrap: "wrap", gap: 8 }}>
+                <div className="grow" style={{ minWidth: 180 }}>
+                  <div>📒 Buchhaltung (Einnahmen-Ausgaben-Journal)</div>
+                  <div className="tiny muted">{b.buchungen.length ? `${b.buchungen.length} Buchung(en) – Summen kommen aus dem Journal` : "Belege laufend fotografieren statt Summen am Jahresende eintragen"}</div>
+                </div>
+                <Link className="btn btn-secondary btn-sm" href="/app/buchhaltung">Öffnen</Link>
+              </div>
+              {b.buchungen.length === 0 && (
               <Row label="Betriebseinnahmen" help="Netto ohne USt">
                 <MoneyInput ariaLabel="Betriebseinnahmen" value={b.einnahmen} onChange={(v) => upd((x) => void (x.einnahmen = v))} />
               </Row>
+              )}
               <Row label="Gewinnermittlung">
                 <select className="select input-inline" value={b.gewinnermittlung} onChange={(e) => upd((x) => void (x.gewinnermittlung = e.target.value as typeof b.gewinnermittlung))}>
                   <option value="ear">Einnahmen-Ausgaben-Rechnung</option>
@@ -136,7 +147,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                   <option value="klein">Kleinunternehmerpauschalierung (bis {eur(p.kleinunternehmerGrenze, 0)})</option>
                 </select>
               </Row>
-              {b.gewinnermittlung === "ear" && (
+              {b.gewinnermittlung === "ear" && b.buchungen.length === 0 && (
                 <Row label="Betriebsausgaben" help="Ohne Sozialversicherung">
                   <MoneyInput ariaLabel="Betriebsausgaben" value={b.ausgaben} onChange={(v) => upd((x) => void (x.ausgaben = v))} />
                 </Row>
@@ -163,12 +174,16 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <Row label="Umsatzsteuer-Satz" help="Meist 20 %; z. B. 10 % für Bücher, 13 % für Kunst">
                 <Segmented label="USt-Satz Betrieb" value={b.ustSatz} options={[{ value: 20, label: "20 %" }, { value: 13, label: "13 %" }, { value: 10, label: "10 %" }, { value: 0, label: "frei" }]} onChange={(v) => upd((x) => void (x.ustSatz = v))} />
               </Row>
-              <Row label="Vorsteuer" help="Umsatzsteuer aus Eingangsrechnungen (nur ohne Kleinunternehmerbefreiung)">
-                <MoneyInput ariaLabel="Vorsteuer Betrieb" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
-              </Row>
-              <Row label="SVS-Beiträge bezahlt" help="Sind immer zusätzlich absetzbar">
-                <MoneyInput ariaLabel="SVS-Beiträge" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
-              </Row>
+              {b.buchungen.length === 0 && (
+                <>
+                  <Row label="Vorsteuer" help="Umsatzsteuer aus Eingangsrechnungen (nur ohne Kleinunternehmerbefreiung)">
+                    <MoneyInput ariaLabel="Vorsteuer Betrieb" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
+                  </Row>
+                  <Row label="SVS-Beiträge bezahlt" help="Sind immer zusätzlich absetzbar">
+                    <MoneyInput ariaLabel="SVS-Beiträge" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
+                  </Row>
+                </>
+              )}
               {b.gewinnermittlung === "ear" && (
                 <>
                   <div className="list-item" style={{ flexWrap: "wrap", gap: 8 }}>

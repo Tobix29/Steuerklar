@@ -5,7 +5,7 @@ import { HttpError } from "./guard";
 import { MAX_UPLOAD_BYTES, normalizeUpload } from "./upload";
 
 /** Nimmt ein hochgeladenes Schreiben entgegen, lässt es auslesen und verwirft die Datei sofort wieder. */
-export async function readLetter<T>(req: Request, schema: ZodType<T>, system: string, userText: (form: FormData) => Promise<string> | string) {
+export async function readLetter<T>(req: Request, schema: ZodType<T>, system: string | ((form: FormData) => string), userText: (form: FormData) => Promise<string> | string) {
   if (!aiEnabled()) throw new HttpError(503, "Für diese Funktion ist ein KI-Schlüssel (ANTHROPIC_API_KEY) auf dem Server nötig.");
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > MAX_UPLOAD_BYTES + 64 * 1024) throw new HttpError(413, `Die Datei ist größer als ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`);
@@ -15,7 +15,7 @@ export async function readLetter<T>(req: Request, schema: ZodType<T>, system: st
   if (!(file instanceof File)) throw new HttpError(400, "Keine Datei erhalten.");
   const { input } = await normalizeUpload(file);
   try {
-    return { form, data: await analyzeDocument(input, schema, system, await userText(form)) };
+    return { form, data: await analyzeDocument(input, schema, typeof system === "string" ? system : system(form), await userText(form)) };
   } catch (err) {
     if (err instanceof ExtractionError) throw new HttpError(422, err.message);
     throw err;
