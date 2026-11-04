@@ -107,3 +107,20 @@ describe("Verlustvortrag", () => {
     expect(r.hinweise.some((h) => h.includes("Verlustvortrag"))).toBe(true);
   });
 });
+
+describe("Investitionsbedingter Gewinnfreibetrag", () => {
+  const p = YEAR_PARAMS[2025];
+  it("Maximum 46.400 € bei 583.000 € Gewinn und ausreichend Investitionen", () => {
+    const r = betrieb(BetriebSchema.parse({ id: "b", einnahmen: 583_000, investitionen: 100_000 }), p);
+    expect(583_000 - r.gewinn).toBeCloseTo(46_400, 0);
+  });
+  it("begrenzt auf die Investitionen und gibt einen Hinweis", () => {
+    const r = betrieb(BetriebSchema.parse({ id: "b", einnahmen: 100_000, investitionen: 2000 }), p);
+    expect(100_000 - r.gewinn).toBeCloseTo(4950 + 2000, 2);
+    expect(r.hinweise.some((h) => h.includes("Investitionen"))).toBe(true);
+  });
+  it("nicht bei Pauschalierung", () => {
+    const r = betrieb(BetriebSchema.parse({ id: "b", einnahmen: 100_000, gewinnermittlung: "basis", investitionen: 50_000 }), p);
+    expect(r.lines.some((l) => l.label.includes("Investitionsbedingter"))).toBe(false);
+  });
+});

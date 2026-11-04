@@ -81,6 +81,8 @@ export const BetriebSchema = z.object({
   sozialversicherung: optMoney,
   /** Basispauschalierung: Tätigkeit mit reduziertem Satz (z. B. Beratung, Vortrag, Schriftsteller) */
   reduzierterSatz: z.boolean().default(false),
+  /** Begünstigte Investitionen (abnutzbare Anlagen, Wohnbauanleihen u. a.) für den investitionsbedingten Gewinnfreibetrag */
+  investitionen: optMoney,
   /** Kleinunternehmerpauschalierung: Dienstleistungsbetrieb (20 % statt 45 %) */
   dienstleistung: z.boolean().default(false),
 });

@@ -149,6 +149,11 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                   </div>
                 </Row>
               )}
+              {b.gewinnermittlung === "ear" && b.einnahmen - b.ausgaben - b.sozialversicherung > p.gewinnfreibetrag.bis && (
+                <Row label="Begünstigte Investitionen" help="Für den investitionsbedingten Gewinnfreibetrag: neue abnutzbare Anlagen oder begünstigte Wertpapiere">
+                  <MoneyInput ariaLabel="Investitionen" value={b.investitionen} onChange={(v) => upd((x) => void (x.investitionen = v))} />
+                </Row>
+              )}
               <Row label="SVS-Beiträge bezahlt" help="Sind immer zusätzlich absetzbar">
                 <MoneyInput ariaLabel="SVS-Beiträge" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
               </Row>

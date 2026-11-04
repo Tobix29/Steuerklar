@@ -64,7 +64,7 @@ export interface YearParams {
   /** Unterhaltsabsetzbetrag je Monat: 1. Kind, 2. Kind, jedes weitere */
   uab: [number, number, number];
   /** Gewinnfreibetrag (Grundfreibetrag): Anteil und Gewinngrenze */
-  gewinnfreibetrag: { rate: number; bis: number };
+  gewinnfreibetrag: { rate: number; bis: number; /** Investitionsbedingter Teil: Obergrenzen und Sätze */ stufen: [number, number][] };
   /** Basispauschalierung: Satz, reduzierter Satz, Umsatzgrenze */
   basispauschalierung: { rate: number; reduziert: number; umsatzgrenze: number };
   /** Kleinunternehmerpauschalierung: Umsatzgrenze */
@@ -106,7 +106,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 0.75, svMax: 300 },
     uab: [29.2, 43.8, 58.4],
-    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 30000, stufen: [[175000, 0.13], [350000, 0.07], [580000, 0.045]] },
     basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
     kleinunternehmerGrenze: 35000,
   },
@@ -144,7 +144,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     // 2022: SV-Rückerstattung Pensionist:innen 100 %, max. 1.050 € (Teuerungs-Entlastungspaket)
     pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 1, svMax: 1050 },
     uab: [29.2, 43.8, 58.4],
-    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 30000, stufen: [[175000, 0.13], [350000, 0.07], [580000, 0.045]] },
     basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
     kleinunternehmerGrenze: 35000,
     teuerung: { amount: 500, from: 18200, to: 24500, pensionFrom: 20500, pensionTo: 25500 },
@@ -179,7 +179,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: (6 / 12) * 1.5 + 6 / 12,
     pension: { pab: 868, from: 18410, pabErhoeht: 1278, fromErhoeht: 20967, to: 26826, partnerLimit: 2315, svRate: 0.8, svMax: 579 },
     uab: [31, 47, 62],
-    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 30000, stufen: [[175000, 0.13], [350000, 0.07], [580000, 0.045]] },
     basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
     kleinunternehmerGrenze: 35000,
   },
@@ -212,7 +212,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 954, from: 20233, pabErhoeht: 1405, fromErhoeht: 23043, to: 29482, partnerLimit: 2545, svRate: 0.8, svMax: 618 },
     uab: [35, 52, 69],
-    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 33000, stufen: [[178000, 0.13], [353000, 0.07], [583000, 0.045]] },
     basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
     kleinunternehmerGrenze: 35000,
   },
@@ -245,7 +245,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 1002, from: 21245, pabErhoeht: 1476, fromErhoeht: 24196, to: 30957, partnerLimit: 2674, svRate: 0.8, svMax: 711 },
     uab: [37, 55, 73],
-    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 33000, stufen: [[178000, 0.13], [353000, 0.07], [583000, 0.045]] },
     basispauschalierung: { rate: 0.135, reduziert: 0.0675, umsatzgrenze: 320000 },
     kleinunternehmerGrenze: 55000,
   },
@@ -279,7 +279,7 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 1020, from: 21614, pabErhoeht: 1502, fromErhoeht: 24616, to: 31494, partnerLimit: 2720, svRate: 0.8, svMax: 723 },
     uab: [38, 56, 75],
-    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    gewinnfreibetrag: { rate: 0.15, bis: 33000, stufen: [[178000, 0.13], [353000, 0.07], [583000, 0.045]] },
     basispauschalierung: { rate: 0.15, reduziert: 0.075, umsatzgrenze: 420000 },
     kleinunternehmerGrenze: 55000,
   },

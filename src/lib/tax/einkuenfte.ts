@@ -82,7 +82,28 @@ export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Lin
   const vorGfb = cents(b.einnahmen - ausgaben - b.sozialversicherung);
   const gfb = vorGfb > 0 ? cents(Math.min(vorGfb, p.gewinnfreibetrag.bis) * p.gewinnfreibetrag.rate) : 0;
   if (gfb > 0) lines.push({ label: "– Gewinnfreibetrag (Grundfreibetrag)", amount: -gfb, hint: `${p.gewinnfreibetrag.rate * 100} % bis ${p.gewinnfreibetrag.bis.toLocaleString("de-AT")} € Gewinn` });
-  return { gewinn: cents(vorGfb - gfb), lines, hinweise };
+
+  // Investitionsbedingter Gewinnfreibetrag: nur bei Einnahmen-Ausgaben-Rechnung, gedeckt durch begünstigte Investitionen
+  let inv = 0;
+  if (vorGfb > p.gewinnfreibetrag.bis) {
+    let prev = p.gewinnfreibetrag.bis;
+    let moeglich = 0;
+    for (const [bis, satz] of p.gewinnfreibetrag.stufen) {
+      if (vorGfb <= prev) break;
+      moeglich += (Math.min(vorGfb, bis) - prev) * satz;
+      prev = bis;
+    }
+    moeglich = cents(moeglich);
+    if (b.gewinnermittlung !== "ear") {
+      if (moeglich > 0) hinweise.push("Den investitionsbedingten Gewinnfreibetrag gibt es nur ohne Pauschalierung.");
+    } else {
+      inv = cents(Math.min(moeglich, b.investitionen));
+      if (inv > 0) lines.push({ label: "– Investitionsbedingter Gewinnfreibetrag", amount: -inv, hint: `gedeckt durch Investitionen von ${b.investitionen.toLocaleString("de-AT")} €` });
+      if (moeglich - inv >= 100)
+        hinweise.push(`Mit weiteren begünstigten Investitionen (z. B. Wertpapiere laut §14 EStG) von bis zu ${Math.round(moeglich - inv).toLocaleString("de-AT")} € könntest du den Gewinnfreibetrag voll nutzen.`);
+    }
+  }
+  return { gewinn: cents(vorGfb - gfb - inv), lines, hinweise };
 }
 
 /** Freibetrag für Nebeneinkünfte bis 730 €, eingeschliffen bis 1.460 € (§41 Abs 3 EStG). */
