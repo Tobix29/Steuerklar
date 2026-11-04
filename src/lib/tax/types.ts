@@ -1,110 +1,94 @@
 import { z } from "zod";
-import { BUNDESLAENDER, SUPPORTED_YEARS, type TaxYear } from "./constants";
+import { BUNDESLAENDER, SUPPORTED_YEARS, WK_KATEGORIEN, type TaxYear, type WkKategorie } from "./constants";
 
 const money = z.number().finite().min(0).max(100_000_000);
 const optMoney = money.default(0);
 
-/** Daten aus einer elektronischen Lohnsteuerbescheinigung (Zeilennummern des amtlichen Musters). */
-export const EmploymentSchema = z.object({
+/** Werte aus dem Jahreslohnzettel L16 (Kennzahlen des amtlichen Formulars). */
+export const LohnzettelSchema = z.object({
   id: z.string().max(64),
-  employer: z.string().max(200).default(""),
-  /** Zeile 3: Bruttoarbeitslohn */
-  bruttoarbeitslohn: optMoney,
-  /** Zeile 4: einbehaltene Lohnsteuer */
-  lohnsteuer: optMoney,
-  /** Zeile 5: einbehaltener Solidaritätszuschlag */
-  soli: optMoney,
-  /** Zeile 6: Kirchensteuer des Arbeitnehmers */
-  kirchensteuer: optMoney,
-  /** Zeile 7: Kirchensteuer des Ehegatten (konfessionsverschiedene Ehe) */
-  kirchensteuerEhegatte: optMoney,
-  /** Zeile 15: Kurzarbeitergeld, Zuschuss Mutterschaftsgeld u. a. (Progressionsvorbehalt) */
-  lohnersatzleistungen: optMoney,
-  /** Zeilen 17+18: steuerfreie Arbeitgeberleistungen für Fahrten Wohnung–Arbeit */
-  steuerfreieFahrtkosten: optMoney,
-  /** Zeile 22a: Arbeitgeberanteil Rentenversicherung */
-  rvArbeitgeber: optMoney,
-  /** Zeile 23a: Arbeitnehmeranteil Rentenversicherung */
-  rvArbeitnehmer: optMoney,
-  /** Zeile 24a+b: steuerfreie Arbeitgeberzuschüsse zur Kranken-/Pflegeversicherung (PKV) */
-  zuschuesseKvPv: optMoney,
-  /** Zeile 25: Arbeitnehmerbeiträge gesetzliche Krankenversicherung */
-  kvArbeitnehmer: optMoney,
-  /** Zeile 26: Arbeitnehmerbeiträge soziale Pflegeversicherung */
-  pvArbeitnehmer: optMoney,
-  /** Zeile 27: Arbeitnehmerbeiträge Arbeitslosenversicherung */
-  alvArbeitnehmer: optMoney,
-  /** Zeile 28: Beiträge private Kranken-/Pflege-Pflichtversicherung (Basisabsicherung) */
-  pkvBasis: optMoney,
+  arbeitgeber: z.string().max(200).default(""),
+  /** KZ 210: Bruttobezüge */
+  kz210: optMoney,
+  /** KZ 215: steuerfreie Bezüge */
+  kz215: optMoney,
+  /** KZ 220: sonstige Bezüge (13./14. Gehalt) vor Abzug der SV-Beiträge innerhalb des Jahressechstels */
+  kz220: optMoney,
+  /** KZ 225: SV-Beiträge für sonstige Bezüge */
+  kz225: optMoney,
+  /** KZ 230: SV-Beiträge für laufende Bezüge */
+  kz230: optMoney,
+  /** KZ 245: steuerpflichtige Bezüge */
+  kz245: optMoney,
+  /** KZ 260: einbehaltene Lohnsteuer */
+  kz260: optMoney,
+  /** KZ 717: vom Arbeitgeber einbehaltene Gewerkschaftsbeiträge */
+  kz717: optMoney,
+  /** KZ 718: vom Arbeitgeber berücksichtigte Pendlerpauschale */
+  kz718: optMoney,
+  /** KZ 916: vom Arbeitgeber berücksichtigter Pendlereuro */
+  kz916: optMoney,
 });
-export type Employment = z.infer<typeof EmploymentSchema>;
+export type Lohnzettel = z.infer<typeof LohnzettelSchema>;
 
 export const ExpenseSchema = z.object({
   id: z.string().max(64),
   label: z.string().max(200),
   amount: money,
-  /** Verweis auf hochgeladenen Beleg (optional) */
+  category: z.enum(Object.keys(WK_KATEGORIEN) as [WkKategorie, ...WkKategorie[]]).optional(),
   documentId: z.string().max(64).optional(),
 });
 export type Expense = z.infer<typeof ExpenseSchema>;
-
-export const PersonSchema = z.object({
-  firstName: z.string().max(100).default(""),
-  lastName: z.string().max(100).default(""),
-  churchMember: z.boolean().default(false),
-  employments: z.array(EmploymentSchema).max(10).default([]),
-  /** Einfache Entfernung Wohnung – erste Tätigkeitsstätte in km */
-  commuteKm: z.number().min(0).max(1000).default(0),
-  /** Tage, an denen die Arbeitsstätte aufgesucht wurde */
-  commuteDays: z.number().int().min(0).max(366).default(0),
-  /** Tage im Homeoffice (Tagespauschale) */
-  homeofficeDays: z.number().int().min(0).max(366).default(0),
-  /** Arbeitsmittel, Fortbildung, Fachliteratur, Bewerbungen … */
-  workExpenses: z.array(ExpenseSchema).max(200).default([]),
-  /** Kontoführungspauschale (16 €) ansetzen */
-  kontofuehrung: z.boolean().default(true),
-  /** Elterngeld, Arbeitslosengeld I u. a. (nicht auf der Lohnsteuerbescheinigung) */
-  weitereLohnersatzleistungen: optMoney,
-});
-export type Person = z.infer<typeof PersonSchema>;
 
 export const ChildSchema = z.object({
   id: z.string().max(64),
   firstName: z.string().max(100).default(""),
   birthYear: z.number().int().min(1950).max(2100),
-  /** Monate mit Kindergeldanspruch im Jahr */
+  /** Monate mit Familienbeihilfe im Jahr */
   months: z.number().int().min(0).max(12).default(12),
-  /** Anteil der Kinderfreibeträge: 1 = voll (Zusammenveranlagung/Übertragung), 0.5 = halb */
-  share: z.union([z.literal(1), z.literal(0.5)]).default(1),
-  /** Kinderbetreuungskosten (Kita, Tagesmutter …), nur Betreuungsanteil, unbar gezahlt */
-  betreuungskosten: optMoney,
+  /** Anteil Familienbonus Plus: 1 = ganz, 0.5 = Aufteilung mit dem anderen Elternteil */
+  familienbonusShare: z.union([z.literal(1), z.literal(0.5)]).default(1),
 });
 export type Child = z.infer<typeof ChildSchema>;
 
 export const TaxCaseSchema = z.object({
   year: z.number().refine((y): y is TaxYear => (SUPPORTED_YEARS as number[]).includes(y)),
-  filing: z.enum(["single", "joint"]).default("single"),
-  bundesland: z.enum(BUNDESLAENDER.map((b) => b.code) as [string, ...string[]]).default("NW"),
-  alleinerziehend: z.boolean().default(false),
-  persons: z.array(PersonSchema).min(1).max(2),
-  children: z.array(ChildSchema).max(15).default([]),
-  /** Spenden und Mitgliedsbeiträge an steuerbegünstigte Organisationen */
+  firstName: z.string().max(100).default(""),
+  lastName: z.string().max(100).default(""),
+  bundesland: z.enum(BUNDESLAENDER.map((b) => b.code) as [string, ...string[]]).default("W"),
+  lohnzettel: z.array(LohnzettelSchema).max(10).default([]),
+
+  /** Arbeitsweg: einfache Strecke in km (Ergebnis des Pendlerrechners) */
+  pendlerKm: z.number().min(0).max(1000).default(0),
+  /** Benützung öffentlicher Verkehrsmittel zumutbar? (kleines vs. großes Pendlerpauschale) */
+  oeffiZumutbar: z.boolean().default(true),
+  /** Fahrten zur Arbeitsstätte pro Kalendermonat (≥ 11 volle, 8–10: 2/3, 4–7: 1/3) */
+  fahrtenProMonat: z.number().int().min(0).max(31).default(0),
+
+  /** Telearbeitstage (Homeoffice) und vom Arbeitgeber steuerfrei gezahlte Telearbeitspauschale */
+  telearbeitstage: z.number().int().min(0).max(366).default(0),
+  telearbeitspauschaleArbeitgeber: optMoney,
+  /** Ergonomisch geeignetes Mobiliar (KZ 158) */
+  mobiliar: optMoney,
+  werbungskosten: z.array(ExpenseSchema).max(200).default([]),
+
+  /** Sonderausgaben */
+  kirchenbeitrag: optMoney,
   spenden: z.array(ExpenseSchema).max(200).default([]),
-  /** Krankheitskosten u. a. außergewöhnliche Belastungen (§33 EStG) */
+  steuerberatung: z.array(ExpenseSchema).max(50).default([]),
+
+  /** Außergewöhnliche Belastungen mit Selbstbehalt */
   krankheitskosten: z.array(ExpenseSchema).max(200).default([]),
-  /** Lohnkostenanteile §35a EStG */
-  haushaltsnaheDienstleistungen: z.array(ExpenseSchema).max(200).default([]),
-  handwerkerleistungen: z.array(ExpenseSchema).max(200).default([]),
-  minijobImHaushalt: optMoney,
+
+  children: z.array(ChildSchema).max(15).default([]),
+  familienstatus: z.enum(["keine", "alleinverdiener", "alleinerzieher"]).default("keine"),
+  /** Einkünfte der Partnerin/des Partners (für den Alleinverdienerabsetzbetrag) */
+  partnerEinkuenfte: optMoney,
 });
 export type TaxCase = z.infer<typeof TaxCaseSchema>;
 
-export function emptyPerson(): Person {
-  return PersonSchema.parse({});
-}
-
 export function emptyCase(year: TaxYear): TaxCase {
-  return TaxCaseSchema.parse({ year, persons: [emptyPerson()] });
+  return TaxCaseSchema.parse({ year });
 }
 
 /* ---------- Ergebnis ---------- */
@@ -113,43 +97,44 @@ export interface Line {
   label: string;
   amount: number;
   hint?: string;
+  /** Kennzahl im Formular L1/L1k */
+  kz?: string;
 }
 
-export interface PersonResult {
-  name: string;
-  bruttoarbeitslohn: number;
-  werbungskostenTatsaechlich: number;
-  werbungskostenAngesetzt: number;
-  werbungskostenDetails: Line[];
-  einkuenfte: number;
-  progressionsvorbehalt: number;
-  withheld: { lohnsteuer: number; soli: number; kirchensteuer: number };
+export interface FormEntry {
+  formular: "L1" | "L1k";
+  kz: string;
+  label: string;
+  value: string;
 }
 
 export interface TaxResult {
   year: TaxYear;
-  filing: "single" | "joint";
   provisional: boolean;
-  persons: PersonResult[];
-  gesamtbetragDerEinkuenfte: number;
+  unverified: string[];
+  laufendeBezuege: number;
+  sonstigeBezuege: number;
+  steuerSonstigeBezuege: number;
+  werbungskosten: Line[];
+  werbungskostenSumme: number;
+  einkuenfte: number;
   sonderausgaben: Line[];
   sonderausgabenSumme: number;
   aussergewoehnlicheBelastungen: Line[];
   aussergewoehnlicheBelastungenSumme: number;
-  kinderfreibetraegeAngesetzt: boolean;
-  kinderfreibetraege: number;
-  entlastungsbetragAlleinerziehend: number;
-  zuVersteuerndesEinkommen: number;
-  tariflicheEinkommensteuer: number;
-  steuersatzProgression: number | null;
-  steuerermaessigung35a: Line[];
-  kindergeldHinzurechnung: number;
-  festzusetzen: { einkommensteuer: number; soli: number; kirchensteuer: number; summe: number };
-  bereitsGezahlt: { lohnsteuer: number; soli: number; kirchensteuer: number; summe: number };
-  /** positiv = Erstattung, negativ = Nachzahlung */
+  einkommen: number;
+  tarifsteuer: number;
+  absetzbetraege: Line[];
+  /** Negativsteuer (AVAB/AEAB, SV-Rückerstattung, Kindermehrbetrag) */
+  negativsteuer: Line[];
+  /** Einkommensteuer gesamt inkl. Steuer auf sonstige Bezüge (negativ = Gutschrift) */
+  einkommensteuer: number;
+  anrechenbareLohnsteuer: number;
+  /** positiv = Gutschrift, negativ = Nachforderung */
   erstattung: number;
   grenzsteuersatz: number;
   durchschnittssteuersatz: number;
+  formular: FormEntry[];
   hinweise: string[];
   pflichtveranlagung: string[];
 }

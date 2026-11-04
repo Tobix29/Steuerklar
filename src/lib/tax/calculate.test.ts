@@ -1,154 +1,144 @@
 import { describe, expect, it } from "vitest";
-import { calculate, entfernungspauschale, grundtarif, solidaritaetszuschlag, tarif, zumutbareBelastung } from "./calculate";
+import { avabBetrag, calculate, pendlerFaktor, pendlerpauschale, selbstbehalt, steuerSonstigeBezuege, tarifsteuer, verkehrsabsetzbetrag } from "./calculate";
 import { SUPPORTED_YEARS, YEAR_PARAMS } from "./constants";
 import { TaxCaseSchema } from "./types";
 
-describe("Grundtarif §32a", () => {
-  it.each(SUPPORTED_YEARS)("ist 0 bis zum Grundfreibetrag (%i)", (year) => {
-    const p = YEAR_PARAMS[year];
-    expect(grundtarif(p.tariff.gfb, p)).toBe(0);
-    expect(grundtarif(p.tariff.gfb + 1, p)).toBe(0);
-    expect(grundtarif(p.tariff.gfb + 100, p)).toBeGreaterThan(0);
-  });
+const P25 = YEAR_PARAMS[2025];
 
-  it.each(SUPPORTED_YEARS)("ist an allen Zonengrenzen stetig (%i)", (year) => {
-    const p = YEAR_PARAMS[year];
-    for (const b of [p.tariff.z2End, p.tariff.z3End, p.tariff.z4End]) {
-      const diff = grundtarif(b + 1, p) - grundtarif(b, p);
-      expect(diff).toBeGreaterThanOrEqual(0);
-      expect(diff).toBeLessThanOrEqual(2); // max. Grenzsteuersatz 45 % + Rundung
+describe("Tarif §33 Abs 1 EStG", () => {
+  it.each(SUPPORTED_YEARS)("ist 0 bis zur ersten Stufe (%i)", (y) => {
+    const p = YEAR_PARAMS[y];
+    expect(tarifsteuer(p.brackets[0]!.upTo, p)).toBe(0);
+    expect(tarifsteuer(p.brackets[0]!.upTo + 100, p)).toBeCloseTo(20, 2);
+  });
+  it.each(SUPPORTED_YEARS)("Stufen sind aufsteigend und enden mit 55 % (%i)", (y) => {
+    const b = YEAR_PARAMS[y].brackets;
+    for (let i = 1; i < b.length; i++) {
+      expect(b[i]!.upTo).toBeGreaterThan(b[i - 1]!.upTo);
+      expect(b[i]!.rate).toBeGreaterThan(b[i - 1]!.rate);
     }
+    expect(b.at(-1)!.rate).toBe(0.55);
   });
-
-  it("Eingangssteuersatz 14 %, Spitzensteuersatz 42 % / 45 %", () => {
-    const p = YEAR_PARAMS[2025];
-    const g = (x: number) => (grundtarif(x + 1000, p) - grundtarif(x, p)) / 1000;
-    expect(g(p.tariff.gfb)).toBeCloseTo(0.14, 1);
-    expect(g(100_000)).toBeCloseTo(0.42, 2);
-    expect(g(300_000)).toBeCloseTo(0.45, 2);
+  it("Referenzwert 2025: 40.000 € Einkommen", () => {
+    // 8.309 × 20 % + 14.219 × 30 % + 4.164 × 40 %
+    expect(tarifsteuer(40_000, P25)).toBeCloseTo(1661.8 + 4265.7 + 1665.6, 2);
   });
-
-  it("berechnet Referenzwerte 2025", () => {
-    const p = YEAR_PARAMS[2025];
-    expect(grundtarif(40_000, p)).toBe(7320);
-    expect(grundtarif(100_000, p)).toBe(Math.floor(0.42 * 100_000 - 10911.92));
-  });
-
-  it("Splitting = 2 × Grundtarif(zvE/2)", () => {
-    const p = YEAR_PARAMS[2025];
-    expect(tarif(80_000, true, p)).toBe(2 * grundtarif(40_000, p));
+  it("Tarifstufen 2026 sind um ca. 1,73 % höher als 2025", () => {
+    const ratio = YEAR_PARAMS[2026].brackets[0]!.upTo / P25.brackets[0]!.upTo;
+    expect(ratio).toBeCloseTo(1.0173, 3);
   });
 });
 
-describe("Solidaritätszuschlag", () => {
-  const p = YEAR_PARAMS[2025];
-  it("Freigrenze", () => expect(solidaritaetszuschlag(19_950, false, p)).toBe(0));
-  it("Milderungszone", () => expect(solidaritaetszuschlag(25_000, false, p)).toBeCloseTo(600.95, 2));
-  it("voller Satz", () => expect(solidaritaetszuschlag(60_000, false, p)).toBeCloseTo(3300, 2));
-  it("doppelte Freigrenze bei Zusammenveranlagung", () => expect(solidaritaetszuschlag(39_900, true, p)).toBe(0));
+describe("Sonstige Bezüge (13./14.)", () => {
+  it("Freigrenze 2.100 €", () => expect(steuerSonstigeBezuege(2100)).toBe(0));
+  it("6 % nach 620 € Freibetrag", () => expect(steuerSonstigeBezuege(5917)).toBeCloseTo((5917 - 620) * 0.06, 2));
+  it("27 %-Stufe ab 25.000 €", () => expect(steuerSonstigeBezuege(30000)).toBeCloseTo(24380 * 0.06 + 5000 * 0.27, 2));
 });
 
-describe("Werbungskosten & Belastungen", () => {
-  it("Entfernungspauschale 2025: 30 km an 200 Tagen", () => {
-    // 20 × 0,30 + 10 × 0,38 = 9,80 € je Tag
-    expect(entfernungspauschale(30, 200, YEAR_PARAMS[2025])).toBe(1960);
+describe("Pendler & Absetzbeträge", () => {
+  it("kleines Pendlerpauschale 20–40 km", () => expect(pendlerpauschale(25, true, 20, P25)).toBe(696));
+  it("unter 20 km mit zumutbaren Öffis: nichts", () => expect(pendlerpauschale(15, true, 20, P25)).toBe(0));
+  it("großes Pendlerpauschale 2–20 km", () => expect(pendlerpauschale(10, false, 20, P25)).toBe(372));
+  it("Aliquotierung 2/3 und 1/3", () => {
+    expect(pendlerFaktor(9)).toBeCloseTo(2 / 3);
+    expect(pendlerFaktor(5)).toBeCloseTo(1 / 3);
+    expect(pendlerFaktor(3)).toBe(0);
   });
-  it("Entfernungspauschale 2026: 0,38 € ab km 1", () => {
-    expect(entfernungspauschale(30, 200, YEAR_PARAMS[2026])).toBeCloseTo(2280, 2);
+  it("Pendlereuro 2026 = 6 €/km", () => expect(YEAR_PARAMS[2026].pendlereuroPerKm).toBe(6));
+  it("Zuschlag zum VAB wird eingeschliffen", () => {
+    expect(verkehrsabsetzbetrag(15_000, P25).zuschlag).toBe(790);
+    expect(verkehrsabsetzbetrag(35_000, P25).zuschlag).toBe(0);
+    const mid = verkehrsabsetzbetrag((19424 + 29743) / 2, P25).zuschlag;
+    expect(mid).toBeCloseTo(395, 0);
   });
-  it("zumutbare Belastung stufenweise", () => {
-    // ledig, keine Kinder, GdE 40.000: 15.340×5 % + 24.660×6 % = 767 + 1.479,60
-    expect(zumutbareBelastung(40_000, false, 0)).toBeCloseTo(2246.6, 2);
+  it("AVAB 2025", () => {
+    expect(avabBetrag(1, P25)).toBe(601);
+    expect(avabBetrag(2, P25)).toBe(813);
+    expect(avabBetrag(3, P25)).toBe(1081);
+  });
+  it("Selbstbehalt", () => {
+    expect(selbstbehalt(40_000, 0)).toBe(4800);
+    expect(selbstbehalt(40_000, 2)).toBe(4000);
   });
 });
 
+/** Typischer Fall: 50.000 € brutto (14 Gehälter), Wien, 2025 */
 const base = (over: Record<string, unknown> = {}) =>
   TaxCaseSchema.parse({
     year: 2025,
-    bundesland: "NW",
-    persons: [
+    firstName: "Lena",
+    lohnzettel: [
       {
-        firstName: "Alex",
-        churchMember: true,
-        commuteKm: 25,
-        commuteDays: 180,
-        homeofficeDays: 40,
-        workExpenses: [{ id: "w1", label: "Laptop (anteilig)", amount: 600 }],
-        employments: [
-          {
-            id: "e1",
-            employer: "Muster GmbH",
-            bruttoarbeitslohn: 52_000,
-            lohnsteuer: 8_900,
-            soli: 0,
-            kirchensteuer: 801,
-            rvArbeitgeber: 4_836,
-            rvArbeitnehmer: 4_836,
-            kvArbeitnehmer: 4_290,
-            pvArbeitnehmer: 936,
-            alvArbeitnehmer: 676,
-          },
-        ],
+        id: "lz1",
+        arbeitgeber: "Muster GmbH",
+        kz210: 50_000,
+        kz220: 7143,
+        kz225: 1226,
+        kz230: 7744,
+        kz245: 35_113,
+        kz260: 5502,
       },
     ],
     ...over,
   });
 
-describe("calculate() – Gesamtberechnung", () => {
-  it("typische Arbeitnehmerin, ledig", () => {
+describe("calculate() – Arbeitnehmerveranlagung", () => {
+  it("ohne zusätzliche Abzüge ≈ keine Gutschrift (Lohnsteuer war korrekt)", () => {
     const r = calculate(base());
-    const pr = r.persons[0]!;
-    // 180 × (20×0,30 + 5×0,38) = 1.422 + HO 240 + 16 + 600 = 2.278
-    expect(pr.werbungskostenTatsaechlich).toBeCloseTo(2278, 2);
-    expect(pr.einkuenfte).toBeCloseTo(52_000 - 2278, 2);
-    expect(r.zuVersteuerndesEinkommen).toBeGreaterThan(35_000);
-    expect(r.festzusetzen.soli).toBe(0);
-    expect(r.festzusetzen.kirchensteuer).toBe(Math.floor(r.festzusetzen.einkommensteuer * 9) / 100);
-    expect(r.erstattung).toBeCloseTo(r.bereitsGezahlt.summe - r.festzusetzen.summe, 2);
+    expect(r.werbungskostenSumme).toBe(132);
+    expect(Math.abs(r.erstattung)).toBeLessThan(5);
   });
 
-  it("Arbeitnehmer-Pauschbetrag greift bei geringen Werbungskosten", () => {
+  it("Werbungskosten über der Pauschale erhöhen die Gutschrift um den Grenzsteuersatz", () => {
+    const r = calculate(base({ werbungskosten: [{ id: "w", label: "Laptop", amount: 1132, category: "digitale_arbeitsmittel" }] }));
+    expect(r.erstattung).toBeCloseTo(1000 * 0.3, 0);
+    expect(r.formular.some((f) => f.kz === "169")).toBe(true);
+  });
+
+  it("Pendlerpauschale + Pendlereuro", () => {
+    const r = calculate(base({ pendlerKm: 25, oeffiZumutbar: true, fahrtenProMonat: 18 }));
+    // 696 € × 30 % + 25 km × 2 € Pendlereuro
+    expect(r.erstattung).toBeCloseTo(696 * 0.3 + 50, 0);
+  });
+
+  it("Familienbonus Plus senkt die Steuer um 2.000,16 € je Kind", () => {
+    const r = calculate(base({ children: [{ id: "k", birthYear: 2019, months: 12, familienbonusShare: 1 }] }));
+    expect(r.erstattung).toBeCloseTo(2000.16, 0);
+  });
+
+  it("Familienbonus halbiert bei Aufteilung", () => {
+    const r = calculate(base({ children: [{ id: "k", birthYear: 2019, months: 12, familienbonusShare: 0.5 }] }));
+    expect(r.erstattung).toBeCloseTo(1000.08, 0);
+  });
+
+  it("Alleinerzieherabsetzbetrag wird zusätzlich gutgeschrieben", () => {
+    const r = calculate(base({ familienstatus: "alleinerzieher", children: [{ id: "k", birthYear: 2019, months: 12 }] }));
+    expect(r.erstattung).toBeCloseTo(2000.16 + 601, 0);
+  });
+
+  it("Geringverdiener: SV-Rückerstattung (Negativsteuer)", () => {
+    const r = calculate(
+      TaxCaseSchema.parse({ year: 2025, lohnzettel: [{ id: "a", kz210: 9000, kz230: 1600, kz245: 7400, kz260: 0 }] }),
+    );
+    expect(r.tarifsteuer).toBe(0);
+    expect(r.negativsteuer[0]?.label).toBe("SV-Rückerstattung");
+    expect(r.erstattung).toBeGreaterThan(0);
+    expect(r.erstattung).toBeLessThanOrEqual(1600 * 0.55);
+  });
+
+  it("Mehrere Lohnzettel lösen Pflichtveranlagung aus", () => {
     const c = base();
-    c.persons[0]!.commuteDays = 0;
-    c.persons[0]!.homeofficeDays = 0;
-    c.persons[0]!.workExpenses = [];
-    const r = calculate(c);
-    expect(r.persons[0]!.werbungskostenAngesetzt).toBe(1230);
+    c.lohnzettel.push({ ...c.lohnzettel[0]!, id: "lz2" });
+    expect(calculate(c).pflichtveranlagung.length).toBeGreaterThan(0);
   });
 
-  it("Zusammenveranlagung ist nicht teurer als zwei Einzelveranlagungen", () => {
-    const single = calculate(base());
-    const c = base({ filing: "joint" });
-    c.persons.push(TaxCaseSchema.shape.persons.element.parse({}));
-    const joint = calculate(c);
-    expect(joint.festzusetzen.einkommensteuer).toBeLessThan(single.festzusetzen.einkommensteuer);
-  });
-
-  it("Kinder: Kindergeld i. d. R. günstiger bei mittlerem Einkommen", () => {
-    const r = calculate(base({ children: [{ id: "k1", birthYear: 2020, months: 12, share: 0.5 }] }));
-    expect(r.kinderfreibetraegeAngesetzt).toBe(false);
-    // Kirchensteuer-Bemessung trotzdem mit Freibeträgen → niedriger als ohne Kind
-    const ohne = calculate(base());
-    expect(r.festzusetzen.kirchensteuer).toBeLessThan(ohne.festzusetzen.kirchensteuer);
-  });
-
-  it("§35a: Handwerkerleistungen mindern die Steuer um 20 % der Arbeitskosten", () => {
-    const ohne = calculate(base());
-    const mit = calculate(base({ handwerkerleistungen: [{ id: "h1", label: "Maler", amount: 1000 }] }));
-    expect(ohne.festzusetzen.einkommensteuer - mit.festzusetzen.einkommensteuer).toBe(200);
-  });
-
-  it("Progressionsvorbehalt erhöht den Steuersatz", () => {
-    const c = base();
-    c.persons[0]!.weitereLohnersatzleistungen = 8000;
-    const r = calculate(c);
-    expect(r.steuersatzProgression).not.toBeNull();
-    expect(r.festzusetzen.einkommensteuer).toBeGreaterThan(calculate(base()).festzusetzen.einkommensteuer);
-    expect(r.pflichtveranlagung.length).toBeGreaterThan(0);
+  it("Kirchenbeitrag max. 600 €", () => {
+    const r = calculate(base({ kirchenbeitrag: 900 }));
+    expect(r.sonderausgaben[0]!.amount).toBe(600);
   });
 
   it("weist ungültige Eingaben zurück", () => {
-    expect(() => TaxCaseSchema.parse({ year: 2019, persons: [{}] })).toThrow();
-    expect(() => base({ bundesland: "XX" })).toThrow();
+    expect(() => TaxCaseSchema.parse({ year: 2019 })).toThrow();
+    expect(() => base({ bundesland: "BY" })).toThrow();
   });
 });

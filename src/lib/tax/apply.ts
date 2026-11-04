@@ -4,108 +4,82 @@ import type { TaxCase } from "./types";
 export interface ApplyTarget {
   id: string;
   extraction: Extraction;
-  personIndex: number;
-  childId?: string;
 }
 
 const n = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** Betrag, der aus einem Beleg verbucht wird (Werbungskosten ggf. mit beruflichem Anteil). */
+export function belegAmount(e: Extraction): number {
+  const b = e.beleg;
+  if (!b) return 0;
+  if (e.documentType === "werbungskosten") return r2(n(b.betrag) * (b.beruflicherAnteil ?? 1));
+  return n(b.betrag);
+}
 
 /** Übernimmt einen bestätigten Beleg in den Steuerfall. Gibt den verbuchten Betrag zurück. */
 export function applyDocument(c: TaxCase, doc: ApplyTarget): { case: TaxCase; amount: number } {
   const next = structuredClone(c);
-  unapplyDocument(next, doc, 0); // idempotent für Listeneinträge
-  const person = next.persons[Math.min(doc.personIndex, next.persons.length - 1)]!;
+  unapplyDocument(next, doc);
   const e = doc.extraction;
   const b = e.beleg;
   const label = (fallback: string) => (b?.beschreibung || b?.empfaenger || fallback).slice(0, 200);
+  const amount = belegAmount(e);
 
   switch (e.documentType) {
-    case "lohnsteuerbescheinigung": {
-      const l = e.lohnsteuerbescheinigung;
-      if (!l) throw new Error("Keine Werte der Lohnsteuerbescheinigung vorhanden.");
-      person.employments.push({
+    case "lohnzettel": {
+      const l = e.lohnzettel;
+      if (!l) throw new Error("Keine Werte des Lohnzettels vorhanden.");
+      next.lohnzettel.push({
         id: doc.id,
-        employer: l.arbeitgeber ?? "",
-        bruttoarbeitslohn: n(l.bruttoarbeitslohn),
-        lohnsteuer: n(l.lohnsteuer),
-        soli: n(l.soli),
-        kirchensteuer: n(l.kirchensteuer),
-        kirchensteuerEhegatte: n(l.kirchensteuerEhegatte),
-        lohnersatzleistungen: n(l.lohnersatzleistungen),
-        steuerfreieFahrtkosten: n(l.steuerfreieFahrtkosten),
-        rvArbeitgeber: n(l.rvArbeitgeber),
-        rvArbeitnehmer: n(l.rvArbeitnehmer),
-        zuschuesseKvPv: n(l.zuschuesseKvPv),
-        kvArbeitnehmer: n(l.kvArbeitnehmer),
-        pvArbeitnehmer: n(l.pvArbeitnehmer),
-        alvArbeitnehmer: n(l.alvArbeitnehmer),
-        pkvBasis: n(l.pkvBasis),
+        arbeitgeber: l.arbeitgeber ?? "",
+        kz210: n(l.kz210), kz215: n(l.kz215), kz220: n(l.kz220), kz225: n(l.kz225), kz230: n(l.kz230),
+        kz245: n(l.kz245), kz260: n(l.kz260), kz717: n(l.kz717), kz718: n(l.kz718), kz916: n(l.kz916),
       });
-      if (n(l.kirchensteuer) > 0) person.churchMember = true;
-      return { case: next, amount: n(l.bruttoarbeitslohn) };
+      next.telearbeitstage = Math.min(366, next.telearbeitstage + n(l.telearbeitstage));
+      next.telearbeitspauschaleArbeitgeber = r2(next.telearbeitspauschaleArbeitgeber + n(l.telearbeitspauschale));
+      return { case: next, amount: n(l.kz210) };
     }
-    case "arbeitsmittel": {
-      const amount = n(b?.betrag);
-      person.workExpenses.push({ id: doc.id, documentId: doc.id, label: label("Arbeitsmittel"), amount });
+    case "werbungskosten":
+      next.werbungskosten.push({ id: doc.id, documentId: doc.id, label: label("Werbungskosten"), amount, category: b?.wkKategorie ?? "sonstige" });
       return { case: next, amount };
-    }
-    case "spendenbescheinigung": {
-      const amount = n(b?.betrag);
+    case "ergonomisches_mobiliar":
+      next.mobiliar = r2(next.mobiliar + amount);
+      return { case: next, amount };
+    case "spendenbestaetigung":
       next.spenden.push({ id: doc.id, documentId: doc.id, label: label("Spende"), amount });
       return { case: next, amount };
-    }
-    case "handwerkerleistung": {
-      const amount = n(b?.arbeitskosten);
-      next.handwerkerleistungen.push({ id: doc.id, documentId: doc.id, label: label("Handwerkerleistung"), amount });
+    case "kirchenbeitrag":
+      next.kirchenbeitrag = r2(next.kirchenbeitrag + amount);
       return { case: next, amount };
-    }
-    case "haushaltsnahe_dienstleistung": {
-      const amount = n(b?.arbeitskosten);
-      next.haushaltsnaheDienstleistungen.push({ id: doc.id, documentId: doc.id, label: label("Haushaltsnahe Dienstleistung"), amount });
-      return { case: next, amount };
-    }
-    case "krankheitskosten": {
-      const amount = n(b?.betrag);
+    case "krankheitskosten":
       next.krankheitskosten.push({ id: doc.id, documentId: doc.id, label: label("Krankheitskosten"), amount });
       return { case: next, amount };
-    }
-    case "kinderbetreuung": {
-      const child = next.children.find((k) => k.id === doc.childId) ?? next.children[0];
-      if (!child) throw new Error("Bitte lege zuerst unter „Über dich“ ein Kind an.");
-      const amount = n(b?.betrag);
-      child.betreuungskosten += amount;
+    case "steuerberatung":
+      next.steuerberatung.push({ id: doc.id, documentId: doc.id, label: label("Steuerberatung"), amount });
       return { case: next, amount };
-    }
-    case "lohnersatzleistung": {
-      const amount = n(b?.betrag);
-      person.weitereLohnersatzleistungen += amount;
-      return { case: next, amount };
-    }
     default:
-      throw new Error("Dieser Belegtyp kann nicht automatisch übernommen werden.");
+      throw new Error("Bitte wähle eine Belegart, damit der Beleg übernommen werden kann.");
   }
 }
 
 /** Entfernt alle Buchungen eines Belegs aus dem Steuerfall (mutiert `c`). */
-export function unapplyDocument(c: TaxCase, doc: ApplyTarget & { appliedAmount?: number }, appliedAmount = doc.appliedAmount ?? 0): TaxCase {
+export function unapplyDocument(c: TaxCase, doc: ApplyTarget & { applied?: boolean }): TaxCase {
   const drop = <T extends { id: string; documentId?: string }>(xs: T[]) => xs.filter((x) => x.id !== doc.id && x.documentId !== doc.id);
-  for (const p of c.persons) {
-    p.employments = drop(p.employments);
-    p.workExpenses = drop(p.workExpenses);
-  }
+  const hadLz = c.lohnzettel.some((x) => x.id === doc.id);
+  c.lohnzettel = drop(c.lohnzettel);
+  c.werbungskosten = drop(c.werbungskosten);
   c.spenden = drop(c.spenden);
-  c.handwerkerleistungen = drop(c.handwerkerleistungen);
-  c.haushaltsnaheDienstleistungen = drop(c.haushaltsnaheDienstleistungen);
   c.krankheitskosten = drop(c.krankheitskosten);
-  if (appliedAmount > 0) {
-    if (doc.extraction.documentType === "kinderbetreuung") {
-      const child = c.children.find((k) => k.id === doc.childId) ?? c.children[0];
-      if (child) child.betreuungskosten = Math.max(0, child.betreuungskosten - appliedAmount);
-    }
-    if (doc.extraction.documentType === "lohnersatzleistung") {
-      const p = c.persons[Math.min(doc.personIndex, c.persons.length - 1)];
-      if (p) p.weitereLohnersatzleistungen = Math.max(0, p.weitereLohnersatzleistungen - appliedAmount);
-    }
+  c.steuerberatung = drop(c.steuerberatung);
+  const e = doc.extraction;
+  if (doc.applied) {
+    if (e.documentType === "ergonomisches_mobiliar") c.mobiliar = Math.max(0, r2(c.mobiliar - belegAmount(e)));
+    if (e.documentType === "kirchenbeitrag") c.kirchenbeitrag = Math.max(0, r2(c.kirchenbeitrag - belegAmount(e)));
+  }
+  if (hadLz && e.lohnzettel) {
+    c.telearbeitstage = Math.max(0, c.telearbeitstage - n(e.lohnzettel.telearbeitstage));
+    c.telearbeitspauschaleArbeitgeber = Math.max(0, r2(c.telearbeitspauschaleArbeitgeber - n(e.lohnzettel.telearbeitspauschale)));
   }
   return c;
 }

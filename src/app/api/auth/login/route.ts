@@ -1,4 +1,4 @@
-import { audit, checkCredentials, createSession } from "@/lib/server/auth";
+import { audit, checkCredentials, createSession, requestKind } from "@/lib/server/auth";
 import { HttpError, json, parseJson, rateLimit, route } from "@/lib/server/guard";
 import { blindIndex } from "@/lib/security/crypto";
 import { CredentialsSchema } from "@/lib/server/validation";
@@ -10,7 +10,8 @@ export const POST = route({ auth: false, rate: { name: "login", limit: 10, windo
   const res = await checkCredentials(body.email, body.password);
   if (!res.ok) throw new HttpError(401, res.error);
   const mfa = !!res.user.totp_secret_enc;
-  await createSession(res.user.id, mfa);
-  if (!mfa) await audit(res.user.id, "login");
-  return json({ ok: true, mfa });
+  const kind = await requestKind();
+  const token = await createSession(res.user.id, mfa, kind);
+  if (!mfa) await audit(res.user.id, `login_${kind}`);
+  return json(kind === "mobile" ? { ok: true, mfa, token } : { ok: true, mfa });
 });

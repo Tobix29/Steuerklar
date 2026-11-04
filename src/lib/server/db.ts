@@ -68,6 +68,9 @@ function init(): DatabaseSync {
       at INTEGER NOT NULL
     );
   `);
+  // Migration: Sitzungsart (web = Cookie, mobile = Bearer-Token aus der nativen App)
+  const cols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "kind")) db.exec("ALTER TABLE sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'web'");
   return db;
 }
 

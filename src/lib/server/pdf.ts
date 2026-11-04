@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { BUNDESLAENDER } from "@/lib/tax/constants";
 import type { TaxCase, TaxResult } from "@/lib/tax/types";
 
-const eur = (n: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
+const eur = (n: number) => new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR" }).format(n);
 const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
 /** Standard-PDF-Schriften kennen nur WinAnsi – alles andere ersetzen. */
 const clean = (s: string) =>
@@ -31,7 +31,7 @@ class Writer {
     this.page.drawText(clean(this.title), { x: this.margin, y: this.height - 28, size: 8, font: this.font, color: MUTED });
     const n = this.doc.getPageCount();
     this.page.drawText(`Seite ${n}`, { x: this.width - this.margin - 30, y: 24, size: 8, font: this.font, color: MUTED });
-    this.page.drawText(clean("Ausfüllhilfe – kein amtlicher Vordruck. Übertragung über ELSTER oder amtliche Formulare."), {
+    this.page.drawText(clean("Ausfüllhilfe – kein amtliches Formular. Abgabe über FinanzOnline bzw. Formular L1."), {
       x: this.margin, y: 24, size: 8, font: this.font, color: MUTED,
     });
   }
@@ -87,114 +87,78 @@ class Writer {
 
 export async function buildPdf(c: TaxCase, r: TaxResult): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(`Einkommensteuererklärung ${c.year} – Ausfüllhilfe`);
+  doc.setTitle(`Arbeitnehmerveranlagung ${c.year} – Ausfüllhilfe`);
   doc.setProducer("Steuerklar");
   doc.setCreator("Steuerklar");
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const w = new Writer(doc, font, bold, `Steuerklar · Einkommensteuererklärung ${c.year} · erstellt am ${new Date().toLocaleDateString("de-DE")}`);
+  const w = new Writer(doc, font, bold, `Steuerklar · Arbeitnehmerveranlagung ${c.year} · erstellt am ${new Date().toLocaleDateString("de-AT")}`);
 
-  w.h1(`Einkommensteuererklärung ${c.year}`);
+  w.h1(`Arbeitnehmerveranlagung ${c.year}`);
   w.text(
-    "Diese Ausfüllhilfe fasst Ihre Angaben und die erkannten Belegwerte zusammen. Die Werte sind den amtlichen Vordrucken bzw. den " +
-      "Eingabefeldern in Mein ELSTER zugeordnet. Bitte prüfen Sie alle Angaben vor der Abgabe. Die Steuerberechnung ist eine Prognose – " +
-      "maßgeblich ist der Steuerbescheid des Finanzamts.",
+    "Diese Ausfüllhilfe fasst deine Angaben und die erkannten Belegwerte zusammen und ordnet sie den Kennzahlen der Formulare L1 " +
+      "und L1k in FinanzOnline zu. Die Daten deines Lohnzettels (L16) liegen dem Finanzamt bereits vor und müssen nicht eingetragen werden. " +
+      "Bitte prüfe alle Angaben vor der Abgabe. Die Berechnung ist eine Prognose – maßgeblich ist der Einkommensteuerbescheid des Finanzamts.",
   );
 
-  /* Ergebnis */
   w.h2("Voraussichtliches Ergebnis");
-  w.row(r.erstattung >= 0 ? "Voraussichtliche Erstattung" : "Voraussichtliche Nachzahlung", eur(Math.abs(r.erstattung)), { strong: true });
-  w.row("Festzusetzende Einkommensteuer", eur(r.festzusetzen.einkommensteuer));
-  w.row("Solidaritätszuschlag", eur(r.festzusetzen.soli));
-  w.row("Kirchensteuer", eur(r.festzusetzen.kirchensteuer));
-  w.row("Bereits gezahlt (Lohnsteuer, Soli, Kirchensteuer)", eur(r.bereitsGezahlt.summe));
+  w.row(r.erstattung >= 0 ? "Voraussichtliche Gutschrift" : "Voraussichtliche Nachforderung", eur(Math.abs(r.erstattung)), { strong: true });
+  w.row("Einkommensteuer laut Berechnung (inkl. sonstige Bezüge)", eur(r.einkommensteuer));
+  w.row("Bereits einbehaltene Lohnsteuer (KZ 260)", eur(r.anrechenbareLohnsteuer));
 
-  /* Hauptvordruck */
-  w.h2("Hauptvordruck (ESt 1 A)", "Allgemeine Angaben");
-  w.row("Veranlagungsart", c.filing === "joint" ? "Zusammenveranlagung" : "Einzelveranlagung");
+  w.h2("In FinanzOnline eintragen", "Formular L1 (Arbeitnehmerveranlagung) bzw. L1k (Familienbonus Plus) – Kennzahlen vor Abgabe prüfen");
+  if (r.formular.length === 0) w.text("Keine zusätzlichen Eintragungen nötig – Pauschalen werden automatisch berücksichtigt.");
+  for (const f of r.formular) w.row(f.label, f.value, { ref: f.kz === "—" ? f.formular : `${f.formular} · KZ ${f.kz}` });
+
+  w.h2("Persönliche Angaben");
+  w.row("Name", [c.firstName, c.lastName].filter(Boolean).join(" ") || "–");
   w.row("Bundesland", BUNDESLAENDER.find((b) => b.code === c.bundesland)?.name ?? c.bundesland);
-  c.persons.slice(0, c.filing === "joint" ? 2 : 1).forEach((p, i) => {
-    w.row(`${i === 0 ? "Steuerpflichtige Person" : "Ehegatte/Lebenspartner:in"}`, [p.firstName, p.lastName].filter(Boolean).join(" ") || "–");
-    w.row("Kirchenmitglied", p.churchMember ? "ja" : "nein");
-  });
-  if (c.alleinerziehend) w.row("Alleinerziehend (Entlastungsbetrag)", eur(r.entlastungsbetragAlleinerziehend));
+  w.row("Familienstatus", c.familienstatus === "alleinverdiener" ? "Alleinverdiener:in" : c.familienstatus === "alleinerzieher" ? "Alleinerzieher:in" : "–");
 
-  /* Anlage N */
-  c.persons.slice(0, c.filing === "joint" ? 2 : 1).forEach((p, i) => {
-    const pr = r.persons[i]!;
-    w.h2(`Anlage N – ${pr.name}`, "Einkünfte aus nichtselbständiger Arbeit (Werte aus der Lohnsteuerbescheinigung)");
-    for (const e of p.employments) {
-      w.text(e.employer ? `Arbeitgeber: ${e.employer}` : "Arbeitgeber", 9.5, INK);
-      w.row("Bruttoarbeitslohn", eur(e.bruttoarbeitslohn), { ref: "LStB Zeile 3" });
-      w.row("Lohnsteuer", eur(e.lohnsteuer), { ref: "LStB Zeile 4" });
-      w.row("Solidaritätszuschlag", eur(e.soli), { ref: "LStB Zeile 5" });
-      w.row("Kirchensteuer", eur(e.kirchensteuer), { ref: "LStB Zeile 6" });
-      if (e.kirchensteuerEhegatte) w.row("Kirchensteuer Ehegatte", eur(e.kirchensteuerEhegatte), { ref: "LStB Zeile 7" });
-      if (e.lohnersatzleistungen) w.row("Lohnersatzleistungen", eur(e.lohnersatzleistungen), { ref: "LStB Zeile 15" });
-      if (e.steuerfreieFahrtkosten) w.row("Steuerfreie Fahrtkostenerstattung", eur(e.steuerfreieFahrtkosten), { ref: "LStB Zeile 17/18" });
-    }
-    if (p.weitereLohnersatzleistungen) w.row("Elterngeld/ALG I u. a. (Progressionsvorbehalt)", eur(p.weitereLohnersatzleistungen));
-    w.text("Werbungskosten", 9.5, INK);
-    for (const d of pr.werbungskostenDetails) w.row(d.hint ? `${d.label} (${d.hint})` : d.label, eur(d.amount));
-    w.row("Angesetzte Werbungskosten", eur(pr.werbungskostenAngesetzt), {
-      strong: true,
-      ref: pr.werbungskostenAngesetzt > pr.werbungskostenTatsaechlich ? "Pauschbetrag" : undefined,
-    });
-    if (p.commuteKm > 0) w.row("Erste Tätigkeitsstätte: Entfernung / Arbeitstage", `${Math.floor(p.commuteKm)} km / ${p.commuteDays} Tage`);
-    if (p.homeofficeDays > 0) w.row("Tage mit Tätigkeit überwiegend in der Wohnung", `${p.homeofficeDays}`);
-  });
-
-  /* Vorsorge */
-  const emps = c.persons.slice(0, c.filing === "joint" ? 2 : 1).flatMap((p) => p.employments);
-  const s = (k: keyof (typeof emps)[number]) => emps.reduce((a, e) => a + (e[k] as number), 0);
-  w.h2("Anlage Vorsorgeaufwand", "Werte werden in ELSTER weitgehend automatisch aus der Lohnsteuerbescheinigung übernommen");
-  w.row("Arbeitnehmeranteil Rentenversicherung", eur(s("rvArbeitnehmer")), { ref: "LStB Zeile 23a" });
-  w.row("Arbeitgeberanteil Rentenversicherung", eur(s("rvArbeitgeber")), { ref: "LStB Zeile 22a" });
-  w.row("Krankenversicherung (Arbeitnehmer)", eur(s("kvArbeitnehmer")), { ref: "LStB Zeile 25" });
-  w.row("Pflegeversicherung (Arbeitnehmer)", eur(s("pvArbeitnehmer")), { ref: "LStB Zeile 26" });
-  w.row("Arbeitslosenversicherung (Arbeitnehmer)", eur(s("alvArbeitnehmer")), { ref: "LStB Zeile 27" });
-  if (s("pkvBasis")) w.row("Private Kranken-/Pflegeversicherung (Basis)", eur(s("pkvBasis")), { ref: "LStB Zeile 28" });
-
-  /* Sonderausgaben */
-  w.h2("Sonderausgaben");
-  for (const l of r.sonderausgaben) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount));
-  for (const sp of c.spenden) w.row(`Spende: ${sp.label}`, eur(sp.amount), { ref: "Anlage Sonderausgaben" });
-
-  /* Kinder */
-  if (c.children.length) {
-    w.h2("Anlage Kind");
-    for (const k of c.children) {
-      w.row(`${k.firstName || "Kind"} (geb. ${k.birthYear}), ${k.months} Monate`, k.share === 1 ? "voller Freibetrag" : "halber Freibetrag");
-      if (k.betreuungskosten) w.row("Kinderbetreuungskosten", eur(k.betreuungskosten));
-    }
-    w.row("Günstigerprüfung", r.kinderfreibetraegeAngesetzt ? "Freibeträge günstiger" : "Kindergeld günstiger");
+  w.h2("Lohnzettel (L16)", "Zur Kontrolle – diese Werte übermittelt der Arbeitgeber direkt an das Finanzamt");
+  for (const l of c.lohnzettel) {
+    w.text(l.arbeitgeber ? `Arbeitgeber: ${l.arbeitgeber}` : "Arbeitgeber", 9.5, INK);
+    w.row("Bruttobezüge", eur(l.kz210), { ref: "KZ 210" });
+    w.row("Sonstige Bezüge (13./14.)", eur(l.kz220), { ref: "KZ 220" });
+    w.row("SV-Beiträge laufende Bezüge", eur(l.kz230), { ref: "KZ 230" });
+    w.row("Steuerpflichtige Bezüge", eur(l.kz245), { ref: "KZ 245" });
+    w.row("Einbehaltene Lohnsteuer", eur(l.kz260), { ref: "KZ 260" });
+    if (l.kz718) w.row("Berücksichtigte Pendlerpauschale", eur(l.kz718), { ref: "KZ 718" });
   }
 
-  /* §35a & agB */
-  if (r.steuerermaessigung35a.length || c.handwerkerleistungen.length || c.haushaltsnaheDienstleistungen.length) {
-    w.h2("Haushaltsnahe Aufwendungen (§35a EStG)", "Hauptvordruck – Steuerermäßigungen; nur unbar gezahlte Arbeitskosten");
-    for (const h of c.haushaltsnaheDienstleistungen) w.row(`Dienstleistung: ${h.label}`, eur(h.amount));
-    for (const h of c.handwerkerleistungen) w.row(`Handwerker: ${h.label}`, eur(h.amount));
-    for (const l of r.steuerermaessigung35a) w.row(`Ermäßigung: ${l.label}`, eur(l.amount), { strong: true });
+  w.h2("Werbungskosten");
+  for (const l of r.werbungskosten) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { ref: l.kz ? `KZ ${l.kz}` : undefined });
+  w.row("Summe Werbungskosten", eur(r.werbungskostenSumme), { strong: true });
+  for (const x of c.werbungskosten) w.row(`Beleg: ${x.label}`, eur(x.amount));
+
+  if (r.sonderausgaben.length) {
+    w.h2("Sonderausgaben");
+    for (const l of r.sonderausgaben) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { ref: l.kz ? `KZ ${l.kz}` : undefined });
   }
-  if (c.krankheitskosten.length) {
-    w.h2("Außergewöhnliche Belastungen", "Anlage Außergewöhnliche Belastungen");
+  if (r.aussergewoehnlicheBelastungen.length) {
+    w.h2("Außergewöhnliche Belastungen");
     for (const k of c.krankheitskosten) w.row(k.label, eur(k.amount));
     for (const l of r.aussergewoehnlicheBelastungen) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { strong: true });
   }
+  if (c.children.length) {
+    w.h2("Kinder (L1k)");
+    for (const k of c.children)
+      w.row(`${k.firstName || "Kind"} (geb. ${k.birthYear}), ${k.months} Monate Familienbeihilfe`, k.familienbonusShare === 1 ? "Familienbonus ganz" : "Familienbonus halb");
+  }
 
-  /* Berechnung */
   w.h2("Steuerberechnung (Prognose)");
-  r.persons.forEach((p) => w.row(`Einkünfte nichtselbständige Arbeit – ${p.name}`, eur(p.einkuenfte)));
-  w.row("Gesamtbetrag der Einkünfte", eur(r.gesamtbetragDerEinkuenfte));
-  w.row("Sonderausgaben", `− ${eur(r.sonderausgabenSumme)}`);
+  w.row("Laufende Bezüge (steuerpflichtig)", eur(r.laufendeBezuege));
+  w.row("Werbungskosten", `− ${eur(r.werbungskostenSumme)}`);
+  w.row("Einkünfte aus nichtselbständiger Arbeit", eur(r.einkuenfte));
+  if (r.sonderausgabenSumme) w.row("Sonderausgaben", `− ${eur(r.sonderausgabenSumme)}`);
   if (r.aussergewoehnlicheBelastungenSumme) w.row("Außergewöhnliche Belastungen", `− ${eur(r.aussergewoehnlicheBelastungenSumme)}`);
-  if (r.kinderfreibetraegeAngesetzt) w.row("Freibeträge für Kinder", `− ${eur(r.kinderfreibetraege)}`);
-  w.row("Zu versteuerndes Einkommen", eur(r.zuVersteuerndesEinkommen), { strong: true });
-  w.row(c.filing === "joint" ? "Tarifliche Einkommensteuer (Splittingtarif)" : "Tarifliche Einkommensteuer (Grundtarif)", eur(r.tariflicheEinkommensteuer));
-  if (r.steuersatzProgression !== null) w.row("Besonderer Steuersatz (Progressionsvorbehalt)", `${(r.steuersatzProgression * 100).toFixed(2)} %`);
-  if (r.kindergeldHinzurechnung) w.row("Hinzurechnung Kindergeld", `+ ${eur(r.kindergeldHinzurechnung)}`);
-  w.row("Grenzsteuersatz", `${(r.grenzsteuersatz * 100).toFixed(1)} %`);
+  w.row("Einkommen", eur(r.einkommen), { strong: true });
+  w.row("Steuer laut Tarif", eur(r.tarifsteuer));
+  for (const a of r.absetzbetraege) w.row(a.label, `− ${eur(a.amount)}`);
+  for (const a of r.negativsteuer) w.row(`${a.label} (Gutschrift)`, `− ${eur(a.amount)}`);
+  w.row("Steuer auf sonstige Bezüge (Jahressechstel)", `+ ${eur(r.steuerSonstigeBezuege)}`);
+  w.row("Einkommensteuer", eur(r.einkommensteuer), { strong: true });
+  w.row("Grenzsteuersatz", `${(r.grenzsteuersatz * 100).toFixed(0)} %`);
 
   if (r.hinweise.length || r.pflichtveranlagung.length) {
     w.h2("Hinweise");

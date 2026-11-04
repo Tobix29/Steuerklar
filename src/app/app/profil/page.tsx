@@ -1,27 +1,40 @@
 "use client";
 import { MoneyInput, NumberInput, Segmented, Toggle } from "@/components/ui";
 import { eur, uid } from "@/lib/client/api";
-import { BUNDESLAENDER, YEAR_PARAMS } from "@/lib/tax/constants";
-import { emptyPerson, type Expense, type TaxCase } from "@/lib/tax/types";
+import { BUNDESLAENDER, WK_KATEGORIEN, YEAR_PARAMS, type WkKategorie } from "@/lib/tax/constants";
+import { pendlerpauschale } from "@/lib/tax/calculate";
+import type { Expense, TaxCase } from "@/lib/tax/types";
 import { useCase } from "../CaseContext";
 
-type ListKey = "spenden" | "krankheitskosten" | "handwerkerleistungen" | "haushaltsnaheDienstleistungen";
+type ListKey = "spenden" | "krankheitskosten" | "steuerberatung" | "werbungskosten";
 
-function ExpenseList({ items, onChange, placeholder }: { items: Expense[]; onChange: (xs: Expense[]) => void; placeholder: string }) {
+function ExpenseList({ items, onChange, placeholder, withCategory }: { items: Expense[]; onChange: (xs: Expense[]) => void; placeholder: string; withCategory?: boolean }) {
   return (
     <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
       {items.map((x, i) => (
-        <div key={x.id} className="row" style={{ gap: 8 }}>
+        <div key={x.id} className="row wrap" style={{ gap: 8 }}>
           <input
             className="input input-inline"
-            style={{ flex: 2 }}
+            style={{ flex: "2 1 160px" }}
             aria-label="Bezeichnung"
             value={x.label}
             placeholder={placeholder}
             disabled={!!x.documentId}
             onChange={(e) => onChange(items.map((y, j) => (j === i ? { ...y, label: e.target.value.slice(0, 200) } : y)))}
           />
-          <div style={{ flex: 1, minWidth: 110 }}>
+          {withCategory && (
+            <select
+              className="select input-inline"
+              style={{ flex: "1 1 160px", width: "auto" }}
+              aria-label="Kategorie"
+              value={x.category ?? "sonstige"}
+              disabled={!!x.documentId}
+              onChange={(e) => onChange(items.map((y, j) => (j === i ? { ...y, category: e.target.value as WkKategorie } : y)))}
+            >
+              {Object.entries(WK_KATEGORIEN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          )}
+          <div style={{ flex: "1 1 110px" }}>
             {x.documentId ? (
               <div className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
                 <span className="badge badge-blue">Beleg</span>
@@ -36,7 +49,11 @@ function ExpenseList({ items, onChange, placeholder }: { items: Expense[]; onCha
           )}
         </div>
       ))}
-      <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => onChange([...items, { id: uid(), label: "", amount: 0 }])}>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ alignSelf: "flex-start" }}
+        onClick={() => onChange([...items, { id: uid(), label: "", amount: 0, ...(withCategory ? { category: "sonstige" as const } : {}) }])}
+      >
         + Eintrag hinzufügen
       </button>
     </div>
@@ -59,9 +76,8 @@ export default function Profil() {
   const { data, update, year } = useCase();
   if (!data) return <div className="shimmer" style={{ height: 400, borderRadius: 18 }} />;
   const p = YEAR_PARAMS[year];
-  const joint = data.filing === "joint";
-  const persons = joint ? data.persons : data.persons.slice(0, 1);
   const set = (fn: (d: TaxCase) => void) => update(fn);
+  const pp = pendlerpauschale(data.pendlerKm, data.oeffiZumutbar, data.fahrtenProMonat, p);
 
   return (
     <div className="stack fade-in" style={{ "--gap": "32px" } as React.CSSProperties}>
@@ -74,23 +90,15 @@ export default function Profil() {
       </header>
 
       <section>
-        <p className="section-label">Veranlagung</p>
+        <p className="section-label">Persönliches</p>
         <div className="list">
-          <Row label="Familienstand" help="Verheiratete können die Zusammenveranlagung (Splitting) wählen.">
-            <Segmented
-              label="Veranlagungsart"
-              value={data.filing}
-              options={[{ value: "single", label: "Einzeln" }, { value: "joint", label: "Zusammen" }]}
-              onChange={(v) =>
-                set((d) => {
-                  d.filing = v;
-                  if (v === "joint" && d.persons.length < 2) d.persons.push(emptyPerson());
-                  if (v === "joint") d.alleinerziehend = false;
-                })
-              }
-            />
+          <Row label="Vorname">
+            <input className="input input-inline" value={data.firstName} autoComplete="given-name" onChange={(e) => set((d) => void (d.firstName = e.target.value.slice(0, 100)))} />
           </Row>
-          <Row label="Bundesland" help="Bestimmt u. a. den Kirchensteuersatz.">
+          <Row label="Nachname">
+            <input className="input input-inline" value={data.lastName} autoComplete="family-name" onChange={(e) => set((d) => void (d.lastName = e.target.value.slice(0, 100)))} />
+          </Row>
+          <Row label="Bundesland">
             <select className="select input-inline" value={data.bundesland} onChange={(e) => set((d) => void (d.bundesland = e.target.value))}>
               {BUNDESLAENDER.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
             </select>
@@ -98,75 +106,56 @@ export default function Profil() {
         </div>
       </section>
 
-      {persons.map((person, i) => (
-        <section key={i} className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
-          <h2 className="title-2">{i === 0 ? (joint ? "Person 1" : "Persönliches") : "Ehepartner:in"}</h2>
-          <div className="list">
-            <Row label="Vorname">
-              <input className="input input-inline" value={person.firstName} autoComplete={i === 0 ? "given-name" : "off"} onChange={(e) => set((d) => void (d.persons[i]!.firstName = e.target.value.slice(0, 100)))} />
-            </Row>
-            <Row label="Nachname">
-              <input className="input input-inline" value={person.lastName} autoComplete={i === 0 ? "family-name" : "off"} onChange={(e) => set((d) => void (d.persons[i]!.lastName = e.target.value.slice(0, 100)))} />
-            </Row>
-            <Row label="Kirchenmitglied" help="Evangelisch, katholisch o. ä. (kirchensteuerpflichtig)">
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <Toggle label="Kirchenmitglied" checked={person.churchMember} onChange={(v) => set((d) => void (d.persons[i]!.churchMember = v))} />
-              </div>
-            </Row>
-          </div>
-
-          <div>
-            <p className="section-label">Arbeitsweg & Homeoffice</p>
-            <div className="list">
-              <Row label="Entfernung zur Arbeit" help="Einfache Strecke, kürzeste Straßenverbindung">
-                <NumberInput ariaLabel="Entfernung in km" value={person.commuteKm} max={1000} suffix="km" onChange={(v) => set((d) => void (d.persons[i]!.commuteKm = v))} />
-              </Row>
-              <Row label="Tage im Büro" help="Typisch: 5-Tage-Woche ≈ 220 Tage">
-                <NumberInput ariaLabel="Bürotage" value={person.commuteDays} suffix="Tage" onChange={(v) => set((d) => void (d.persons[i]!.commuteDays = v))} />
-              </Row>
-              <Row label="Tage im Homeoffice" help={`${p.homeofficePerDay} € pro Tag, max. ${p.homeofficeMaxDays} Tage`}>
-                <NumberInput ariaLabel="Homeoffice-Tage" value={person.homeofficeDays} suffix="Tage" onChange={(v) => set((d) => void (d.persons[i]!.homeofficeDays = v))} />
-              </Row>
-              <Row label="Kontoführungspauschale" help="16 € werden ohne Nachweis anerkannt">
-                <div className="row" style={{ justifyContent: "flex-end" }}>
-                  <Toggle label="Kontoführungspauschale" checked={person.kontofuehrung} onChange={(v) => set((d) => void (d.persons[i]!.kontofuehrung = v))} />
-                </div>
-              </Row>
+      <section>
+        <p className="section-label">Arbeitsweg</p>
+        <div className="list">
+          <Row label="Einfache Strecke zur Arbeit" help="Am besten den Wert aus dem Pendlerrechner des BMF übernehmen">
+            <NumberInput ariaLabel="Entfernung in km" value={data.pendlerKm} max={1000} suffix="km" onChange={(v) => set((d) => void (d.pendlerKm = v))} />
+          </Row>
+          <Row label="Öffentliche Verkehrsmittel zumutbar?" help="Nein → großes Pendlerpauschale (z. B. keine Verbindung, lange Fahrzeit)">
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Toggle label="Öffis zumutbar" checked={data.oeffiZumutbar} onChange={(v) => set((d) => void (d.oeffiZumutbar = v))} />
             </div>
-            {person.commuteDays + person.homeofficeDays > 250 && (
-              <div className="notice notice-orange small" style={{ marginTop: 10 }}>Büro- und Homeoffice-Tage zusammen wirken hoch. Bitte prüfen – das Finanzamt fragt hier häufig nach.</div>
-            )}
-          </div>
-
-          <div>
-            <p className="section-label">Weitere Werbungskosten</p>
-            <div className="card">
-              <ExpenseList
-                placeholder="z. B. Fachbuch, Fortbildung, Bewerbung"
-                items={person.workExpenses}
-                onChange={(xs) => set((d) => void (d.persons[i]!.workExpenses = xs))}
-              />
+          </Row>
+          <Row label="Fahrten pro Monat" help="Ab 11 Fahrten volles Pauschale, 8–10: zwei Drittel, 4–7: ein Drittel">
+            <NumberInput ariaLabel="Fahrten pro Monat" value={data.fahrtenProMonat} max={31} suffix="Tage" onChange={(v) => set((d) => void (d.fahrtenProMonat = v))} />
+          </Row>
+          {data.pendlerKm > 0 && (
+            <div className="list-item strong">
+              <span className="grow">Pendlerpauschale {year}</span>
+              <span className="value">{pp > 0 ? eur(pp) : "kein Anspruch"}</span>
             </div>
-          </div>
+          )}
+        </div>
+      </section>
 
-          <div>
-            <p className="section-label">Lohnersatzleistungen</p>
-            <div className="list">
-              <Row label="Elterngeld, Arbeitslosengeld I, Krankengeld" help="Steuerfrei, erhöht aber den Steuersatz (Progressionsvorbehalt)">
-                <MoneyInput ariaLabel="Lohnersatzleistungen" value={person.weitereLohnersatzleistungen} onChange={(v) => set((d) => void (d.persons[i]!.weitereLohnersatzleistungen = v))} />
-              </Row>
-            </div>
-          </div>
-        </section>
-      ))}
+      <section>
+        <p className="section-label">Homeoffice (Telearbeit)</p>
+        <div className="list">
+          <Row label="Telearbeitstage" help={`${p.telearbeit.perDay} € pro Tag, max. ${p.telearbeit.maxDays} Tage – steht meist am Lohnzettel`}>
+            <NumberInput ariaLabel="Telearbeitstage" value={data.telearbeitstage} suffix="Tage" onChange={(v) => set((d) => void (d.telearbeitstage = v))} />
+          </Row>
+          <Row label="Davon vom Arbeitgeber steuerfrei bezahlt">
+            <MoneyInput ariaLabel="Telearbeitspauschale Arbeitgeber" value={data.telearbeitspauschaleArbeitgeber} onChange={(v) => set((d) => void (d.telearbeitspauschaleArbeitgeber = v))} />
+          </Row>
+          <Row label="Ergonomisches Mobiliar" help={`Schreibtisch, Bürosessel, Beleuchtung – max. ${p.mobiliarMax} € (ab 26 Telearbeitstagen)`}>
+            <MoneyInput ariaLabel="Mobiliar" value={data.mobiliar} onChange={(v) => set((d) => void (d.mobiliar = v))} />
+          </Row>
+        </div>
+      </section>
+
+      <section>
+        <p className="section-label">Werbungskosten</p>
+        <div className="card">
+          <ExpenseList withCategory placeholder="z. B. Laptop, Fachbuch, Sprachkurs" items={data.werbungskosten} onChange={(xs) => set((d) => void (d.werbungskosten = xs))} />
+          <p className="tiny muted" style={{ margin: "10px 0 0" }}>Insgesamt mindestens {p.werbungskostenpauschale} € – darunter gilt automatisch die Werbungskostenpauschale.</p>
+        </div>
+      </section>
 
       <section className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
         <div className="row-between">
-          <h2 className="title-2">Kinder</h2>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, share: joint ? 1 : 0.5, betreuungskosten: 0 }))}
-          >
+          <h2 className="title-2">Kinder & Familie</h2>
+          <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.children.push({ id: uid(), firstName: "", birthYear: year - 3, months: 12, familienbonusShare: 1 }))}>
             + Kind hinzufügen
           </button>
         </div>
@@ -176,47 +165,53 @@ export default function Profil() {
             <Row label="Vorname">
               <input className="input input-inline" value={c.firstName} onChange={(e) => set((d) => void (d.children[i]!.firstName = e.target.value.slice(0, 100)))} />
             </Row>
-            <Row label="Geburtsjahr">
+            <Row label="Geburtsjahr" help={year - c.birthYear >= 18 ? `ab 18: Familienbonus ${eur(p.familienbonus.over18)} / Jahr` : `unter 18: Familienbonus ${eur(p.familienbonus.under18)} / Jahr`}>
               <NumberInput ariaLabel="Geburtsjahr" value={c.birthYear} max={year} onChange={(v) => set((d) => void (d.children[i]!.birthYear = Math.max(1950, v)))} />
             </Row>
-            <Row label="Monate mit Kindergeld">
+            <Row label="Monate mit Familienbeihilfe">
               <NumberInput ariaLabel="Monate" value={c.months} max={12} suffix="Mon." onChange={(v) => set((d) => void (d.children[i]!.months = v))} />
             </Row>
-            {!joint && (
-              <Row label="Kinderfreibetrag" help="Halb, wenn der andere Elternteil ebenfalls Anspruch hat">
-                <Segmented label="Freibetrag" value={c.share} options={[{ value: 0.5, label: "Halb" }, { value: 1, label: "Voll" }]} onChange={(v) => set((d) => void (d.children[i]!.share = v))} />
-              </Row>
-            )}
-            <Row label="Kinderbetreuungskosten" help={`Kita, Tagesmutter (unter 14 J.), ${Math.round(p.kinderbetreuung.share * 100)} % bis ${eur(p.kinderbetreuung.max, 0)}`}>
-              <MoneyInput ariaLabel="Betreuungskosten" value={c.betreuungskosten} onChange={(v) => set((d) => void (d.children[i]!.betreuungskosten = v))} />
+            <Row label="Familienbonus Plus" help="Ganz oder je zur Hälfte mit dem anderen Elternteil">
+              <Segmented label="Familienbonus" value={c.familienbonusShare} options={[{ value: 1, label: "Ganz" }, { value: 0.5, label: "Hälfte" }]} onChange={(v) => set((d) => void (d.children[i]!.familienbonusShare = v))} />
             </Row>
             <div className="list-item">
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--red)" }} onClick={() => set((d) => void d.children.splice(i, 1))}>Kind entfernen</button>
             </div>
           </div>
         ))}
-        {!joint && data.children.length > 0 && (
+        {data.children.length > 0 && (
           <div className="list">
-            <Row label="Alleinerziehend" help={`Entlastungsbetrag ab ${eur(p.entlastungAlleinerziehend.base, 0)}, wenn kein anderer Erwachsener im Haushalt lebt`}>
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <Toggle label="Alleinerziehend" checked={data.alleinerziehend} onChange={(v) => set((d) => void (d.alleinerziehend = v))} />
-              </div>
+            <Row label="Familienstatus" help="Für den Alleinverdiener- bzw. Alleinerzieherabsetzbetrag">
+              <select className="select input-inline" value={data.familienstatus} onChange={(e) => set((d) => void (d.familienstatus = e.target.value as TaxCase["familienstatus"]))}>
+                <option value="keine">Kein Anspruch</option>
+                <option value="alleinverdiener">Alleinverdiener:in</option>
+                <option value="alleinerzieher">Alleinerzieher:in</option>
+              </select>
             </Row>
+            {data.familienstatus === "alleinverdiener" && (
+              <Row label="Einkünfte der Partnerin/des Partners" help={`Grenze ${eur(p.avabPartnerIncomeLimit, 0)} pro Jahr`}>
+                <MoneyInput ariaLabel="Partnereinkünfte" value={data.partnerEinkuenfte} onChange={(v) => set((d) => void (d.partnerEinkuenfte = v))} />
+              </Row>
+            )}
           </div>
         )}
       </section>
 
       <section className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
         <div>
-          <h2 className="title-2">Weitere Abzüge</h2>
-          <p className="muted small" style={{ margin: "4px 0 0" }}>Am einfachsten: Belege fotografieren. Du kannst Beträge aber auch direkt eintragen.</p>
+          <h2 className="title-2">Sonderausgaben & Krankheitskosten</h2>
+          <p className="muted small" style={{ margin: "4px 0 0" }}>Kirchenbeitrag und Spenden übermitteln Kirche und Organisationen automatisch – hier nur für die Berechnung.</p>
+        </div>
+        <div className="list">
+          <Row label="Kirchenbeitrag" help={`max. ${p.kirchenbeitragMax} € absetzbar`}>
+            <MoneyInput ariaLabel="Kirchenbeitrag" value={data.kirchenbeitrag} onChange={(v) => set((d) => void (d.kirchenbeitrag = v))} />
+          </Row>
         </div>
         {(
           [
-            ["spenden", "Spenden & Mitgliedsbeiträge", "z. B. Kinderhilfswerk"],
-            ["krankheitskosten", "Krankheitskosten", "z. B. Brille, Zahnersatz, Zuzahlungen"],
-            ["handwerkerleistungen", "Handwerkerleistungen (nur Arbeitskosten)", "z. B. Malerarbeiten"],
-            ["haushaltsnaheDienstleistungen", "Haushaltsnahe Dienstleistungen (nur Arbeitskosten)", "z. B. Reinigung, Gartenpflege"],
+            ["spenden", "Spenden", "z. B. Rotes Kreuz"],
+            ["krankheitskosten", "Krankheitskosten (mit Selbstbehalt)", "z. B. Zahnarzt, Brille, Selbstbehalte"],
+            ["steuerberatung", "Steuerberatungskosten", "z. B. Steuerberatung, Steuersoftware"],
           ] as [ListKey, string, string][]
         ).map(([key, label, ph]) => (
           <div key={key}>
@@ -226,11 +221,6 @@ export default function Profil() {
             </div>
           </div>
         ))}
-        <div className="list">
-          <Row label="Minijob im Privathaushalt" help="Jährliche Aufwendungen (z. B. Haushaltshilfe über Haushaltsscheck)">
-            <MoneyInput ariaLabel="Minijob" value={data.minijobImHaushalt} onChange={(v) => set((d) => void (d.minijobImHaushalt = v))} />
-          </Row>
-        </div>
       </section>
     </div>
   );

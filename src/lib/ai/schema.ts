@@ -1,49 +1,47 @@
 import { z } from "zod";
+import { WK_KATEGORIEN, type WkKategorie } from "@/lib/tax/constants";
 
 export const DOCUMENT_TYPES = {
-  lohnsteuerbescheinigung: { label: "Lohnsteuerbescheinigung", icon: "💼" },
-  arbeitsmittel: { label: "Werbungskosten (Arbeitsmittel, Fortbildung …)", icon: "💻" },
-  spendenbescheinigung: { label: "Spendenbescheinigung", icon: "💝" },
-  handwerkerleistung: { label: "Handwerkerrechnung", icon: "🛠️" },
-  haushaltsnahe_dienstleistung: { label: "Haushaltsnahe Dienstleistung / Nebenkosten", icon: "🧹" },
+  lohnzettel: { label: "Lohnzettel (L16)", icon: "💼" },
+  werbungskosten: { label: "Werbungskosten (Arbeitsmittel, Fortbildung …)", icon: "💻" },
+  ergonomisches_mobiliar: { label: "Homeoffice-Mobiliar (Schreibtisch, Sessel)", icon: "🪑" },
+  spendenbestaetigung: { label: "Spendenbestätigung", icon: "💝" },
+  kirchenbeitrag: { label: "Kirchenbeitrag", icon: "⛪" },
   krankheitskosten: { label: "Krankheitskosten", icon: "🩺" },
-  kinderbetreuung: { label: "Kinderbetreuung", icon: "🧸" },
-  lohnersatzleistung: { label: "Elterngeld / Arbeitslosengeld", icon: "📄" },
+  steuerberatung: { label: "Steuerberatungskosten", icon: "🧾" },
   unbekannt: { label: "Nicht erkannt", icon: "❔" },
 } as const;
 
 export type DocumentType = keyof typeof DOCUMENT_TYPES;
 const typeKeys = Object.keys(DOCUMENT_TYPES) as [DocumentType, ...DocumentType[]];
+const wkKeys = Object.keys(WK_KATEGORIEN) as [WkKategorie, ...WkKategorie[]];
 
 const num = () => z.number().nullable();
 
-export const LohnsteuerFieldsSchema = z.object({
+export const LohnzettelFieldsSchema = z.object({
   arbeitgeber: z.string().nullable().describe("Name des Arbeitgebers"),
-  bruttoarbeitslohn: num().describe("Zeile 3: Bruttoarbeitslohn in Euro"),
-  lohnsteuer: num().describe("Zeile 4: Einbehaltene Lohnsteuer"),
-  soli: num().describe("Zeile 5: Einbehaltener Solidaritätszuschlag"),
-  kirchensteuer: num().describe("Zeile 6: Einbehaltene Kirchensteuer des Arbeitnehmers"),
-  kirchensteuerEhegatte: num().describe("Zeile 7: Kirchensteuer des Ehegatten"),
-  lohnersatzleistungen: num().describe("Zeile 15: Kurzarbeitergeld, Zuschuss zum Mutterschaftsgeld u. a."),
-  steuerfreieFahrtkosten: num().describe("Summe Zeilen 17 und 18: steuerfreie/pauschal besteuerte Arbeitgeberleistungen für Fahrten"),
-  rvArbeitgeber: num().describe("Zeile 22a: Arbeitgeberanteil zur gesetzlichen Rentenversicherung"),
-  rvArbeitnehmer: num().describe("Zeile 23a: Arbeitnehmeranteil zur gesetzlichen Rentenversicherung"),
-  zuschuesseKvPv: num().describe("Summe Zeilen 24a und 24b: Arbeitgeberzuschüsse zur Kranken- und Pflegeversicherung"),
-  kvArbeitnehmer: num().describe("Zeile 25: Arbeitnehmerbeiträge zur gesetzlichen Krankenversicherung"),
-  pvArbeitnehmer: num().describe("Zeile 26: Arbeitnehmerbeiträge zur sozialen Pflegeversicherung"),
-  alvArbeitnehmer: num().describe("Zeile 27: Arbeitnehmerbeiträge zur Arbeitslosenversicherung"),
-  pkvBasis: num().describe("Zeile 28: Beiträge zur privaten Kranken- und Pflege-Pflichtversicherung"),
-  steuerId: z.string().nullable().describe("Steuerliche Identifikationsnummer (11 Ziffern, ohne Leerzeichen)"),
+  kz210: num().describe("KZ 210: Bruttobezüge in Euro"),
+  kz215: num().describe("KZ 215: steuerfreie Bezüge"),
+  kz220: num().describe("KZ 220: sonstige Bezüge vor Abzug der SV-Beiträge (13./14. Gehalt innerhalb des Jahressechstels)"),
+  kz225: num().describe("KZ 225: SV-Beiträge für sonstige Bezüge"),
+  kz230: num().describe("KZ 230: SV-Beiträge für laufende Bezüge (Dienstnehmeranteil)"),
+  kz245: num().describe("KZ 245: steuerpflichtige Bezüge"),
+  kz260: num().describe("KZ 260: einbehaltene Lohnsteuer"),
+  kz717: num().describe("KZ 717: Gewerkschaftsbeiträge"),
+  kz718: num().describe("KZ 718: berücksichtigte Pendlerpauschale"),
+  kz916: num().describe("KZ 916: berücksichtigter Pendlereuro"),
+  telearbeitstage: num().describe("Anzahl der am Lohnzettel ausgewiesenen Telearbeitstage"),
+  telearbeitspauschale: num().describe("Vom Arbeitgeber steuerfrei ausbezahlte Telearbeitspauschale"),
 });
-export type LohnsteuerFields = z.infer<typeof LohnsteuerFieldsSchema>;
+export type LohnzettelFields = z.infer<typeof LohnzettelFieldsSchema>;
 
 export const BelegFieldsSchema = z.object({
-  betrag: num().describe("Gesamtbetrag in Euro (brutto)"),
-  arbeitskosten: num().describe("Nur bei Handwerker/haushaltsnahen Leistungen: Arbeits-, Maschinen- und Fahrtkosten inkl. USt., ohne Material"),
+  betrag: num().describe("Bezahlter Gesamtbetrag in Euro (brutto)"),
   datum: z.string().nullable().describe("Rechnungs- oder Zahlungsdatum im Format JJJJ-MM-TT"),
-  beschreibung: z.string().describe("Kurze Beschreibung, z. B. 'Malerarbeiten Wohnzimmer' oder 'Laptop'"),
+  beschreibung: z.string().describe("Kurze Beschreibung, z. B. 'Laptop' oder 'Sprachkurs Englisch'"),
   empfaenger: z.string().nullable().describe("Aussteller bzw. Zahlungsempfänger"),
-  unbarGezahlt: z.boolean().nullable().describe("Gibt es Hinweise auf Überweisung/Kartenzahlung? Barzahlung ist bei §35a nicht begünstigt."),
+  wkKategorie: z.enum(wkKeys).nullable().describe("Nur bei Werbungskosten: passende Kategorie"),
+  beruflicherAnteil: z.number().nullable().describe("Geschätzter beruflicher Nutzungsanteil 0–1, falls privat mitgenutzt (z. B. Laptop 0.6); sonst null"),
 });
 export type BelegFields = z.infer<typeof BelegFieldsSchema>;
 
@@ -53,24 +51,11 @@ export const ExtractionSchema = z.object({
   taxYear: z.number().int().nullable().describe("Jahr, auf das sich der Beleg bezieht"),
   personName: z.string().nullable().describe("Name der Person, auf die der Beleg ausgestellt ist"),
   summary: z.string().describe("Ein Satz auf Deutsch, was der Beleg ist"),
-  lohnsteuerbescheinigung: LohnsteuerFieldsSchema.nullable(),
+  lohnzettel: LohnzettelFieldsSchema.nullable(),
   beleg: BelegFieldsSchema.nullable(),
   warnings: z.array(z.string()).describe("Unklarheiten, unleserliche Felder oder steuerliche Hinweise"),
 });
 export type Extraction = z.infer<typeof ExtractionSchema>;
-
-/** Plausibilitätsprüfung der Steuer-ID (ISO 7064, MOD 11,10). */
-export function isValidSteuerId(id: string): boolean {
-  if (!/^[1-9]\d{10}$/.test(id)) return false;
-  let product = 10;
-  for (let i = 0; i < 10; i++) {
-    let s = (Number(id[i]) + product) % 10;
-    if (s === 0) s = 10;
-    product = (s * 2) % 11;
-  }
-  const check = (11 - product) % 10;
-  return check === Number(id[10]);
-}
 
 /** Bereinigt und plausibilisiert die KI-Ausgabe, bevor sie gespeichert wird. */
 export function sanitizeExtraction(e: Extraction): Extraction {
@@ -78,37 +63,38 @@ export function sanitizeExtraction(e: Extraction): Extraction {
   const clip = (s: string | null, max = 300) => (s === null ? null : s.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, max));
   const warnings = e.warnings.map((w) => clip(w, 400)!).slice(0, 10);
 
-  let lst = e.lohnsteuerbescheinigung;
-  if (lst) {
-    const cleaned = Object.fromEntries(
-      Object.entries(lst).map(([k, v]) => [k, typeof v === "number" || v === null ? (k === "steuerId" ? v : clampMoney(v as number | null)) : v]),
-    ) as LohnsteuerFields;
+  let lz = e.lohnzettel;
+  if (lz) {
+    const cleaned = { ...lz } as LohnzettelFields;
+    for (const k of Object.keys(cleaned) as (keyof LohnzettelFields)[]) {
+      if (k !== "arbeitgeber") (cleaned as Record<string, unknown>)[k] = clampMoney(cleaned[k] as number | null);
+    }
     cleaned.arbeitgeber = clip(cleaned.arbeitgeber, 200);
-    const sid = cleaned.steuerId?.replace(/\s/g, "") ?? null;
-    cleaned.steuerId = sid && isValidSteuerId(sid) ? sid : null;
-    if (sid && !cleaned.steuerId) warnings.push("Die erkannte Steuer-ID ist nicht plausibel und wurde verworfen.");
-    if (cleaned.bruttoarbeitslohn !== null && cleaned.lohnsteuer !== null && cleaned.lohnsteuer > cleaned.bruttoarbeitslohn * 0.5)
-      warnings.push("Die Lohnsteuer erscheint im Verhältnis zum Bruttolohn ungewöhnlich hoch – bitte prüfen.");
-    lst = cleaned;
+    if (cleaned.telearbeitstage !== null) cleaned.telearbeitstage = Math.min(366, Math.round(cleaned.telearbeitstage));
+    if (cleaned.kz210 !== null && cleaned.kz260 !== null && cleaned.kz260 > cleaned.kz210 * 0.5)
+      warnings.push("Die Lohnsteuer erscheint im Verhältnis zu den Bruttobezügen ungewöhnlich hoch – bitte prüfen.");
+    if (cleaned.kz210 !== null && cleaned.kz245 !== null && cleaned.kz245 > cleaned.kz210)
+      warnings.push("Die steuerpflichtigen Bezüge (KZ 245) sind höher als die Bruttobezüge (KZ 210) – bitte prüfen.");
+    lz = cleaned;
   }
   let beleg = e.beleg;
   if (beleg) {
+    const share = beleg.beruflicherAnteil;
     beleg = {
       ...beleg,
       betrag: clampMoney(beleg.betrag),
-      arbeitskosten: clampMoney(beleg.arbeitskosten),
       datum: beleg.datum && /^\d{4}-\d{2}-\d{2}$/.test(beleg.datum) ? beleg.datum : null,
       beschreibung: clip(beleg.beschreibung, 200) ?? "",
       empfaenger: clip(beleg.empfaenger, 200),
+      beruflicherAnteil: share !== null && Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : null,
     };
-    if (beleg.arbeitskosten !== null && beleg.betrag !== null && beleg.arbeitskosten > beleg.betrag) beleg.arbeitskosten = beleg.betrag;
   }
   return {
     ...e,
     personName: clip(e.personName, 120),
     summary: clip(e.summary, 300) ?? "",
     taxYear: e.taxYear && e.taxYear > 2000 && e.taxYear < 2100 ? e.taxYear : null,
-    lohnsteuerbescheinigung: lst,
+    lohnzettel: lz,
     beleg,
     warnings,
   };

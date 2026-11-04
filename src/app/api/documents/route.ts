@@ -18,7 +18,6 @@ export const POST = route({ auth: true, rate: { name: "upload", limit: 40, windo
   const file = form.get("file");
   if (!(file instanceof File)) throw new HttpError(400, "Keine Datei erhalten.");
   const year = parseYear(String(form.get("year") ?? ""));
-  const personIndex = form.get("person") === "1" ? 1 : 0;
 
   const { input, kind, bytes } = await normalizeUpload(file);
   let extraction;
@@ -41,7 +40,6 @@ export const POST = route({ auth: true, rate: { name: "upload", limit: 40, windo
     uploadedAt: Date.now(),
     demo: !aiEnabled(),
     extraction,
-    personIndex,
     applied: false,
   };
   if (extraction.taxYear && extraction.taxYear !== year)

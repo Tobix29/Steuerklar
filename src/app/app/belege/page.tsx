@@ -1,32 +1,30 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MoneyInput, Segmented, useToast } from "@/components/ui";
+import { MoneyInput, NumberInput, useToast } from "@/components/ui";
 import { api, eur } from "@/lib/client/api";
-import { DOCUMENT_TYPES, type DocumentType, type Extraction, type LohnsteuerFields } from "@/lib/ai/schema";
+import { DOCUMENT_TYPES, type DocumentType, type Extraction, type LohnzettelFields } from "@/lib/ai/schema";
+import { WK_KATEGORIEN, type WkKategorie } from "@/lib/tax/constants";
+import { belegAmount } from "@/lib/tax/apply";
 import type { StoredDocument } from "@/lib/server/repo";
 import { useCase } from "../CaseContext";
 
-const LST_FIELDS: [keyof LohnsteuerFields, string, string][] = [
-  ["bruttoarbeitslohn", "Bruttoarbeitslohn", "3"],
-  ["lohnsteuer", "Lohnsteuer", "4"],
-  ["soli", "Solidaritätszuschlag", "5"],
-  ["kirchensteuer", "Kirchensteuer", "6"],
-  ["kirchensteuerEhegatte", "Kirchensteuer Ehegatte", "7"],
-  ["lohnersatzleistungen", "Kurzarbeitergeld u. a.", "15"],
-  ["steuerfreieFahrtkosten", "Steuerfreie Fahrtkosten", "17/18"],
-  ["rvArbeitgeber", "Rentenversicherung AG", "22a"],
-  ["rvArbeitnehmer", "Rentenversicherung AN", "23a"],
-  ["zuschuesseKvPv", "Zuschüsse KV/PV", "24"],
-  ["kvArbeitnehmer", "Krankenversicherung AN", "25"],
-  ["pvArbeitnehmer", "Pflegeversicherung AN", "26"],
-  ["alvArbeitnehmer", "Arbeitslosenversicherung AN", "27"],
-  ["pkvBasis", "Private KV/PV (Basis)", "28"],
+const LZ_FIELDS: [keyof LohnzettelFields, string, string][] = [
+  ["kz210", "Bruttobezüge", "210"],
+  ["kz215", "Steuerfreie Bezüge", "215"],
+  ["kz220", "Sonstige Bezüge (13./14.)", "220"],
+  ["kz225", "SV-Beiträge sonstige Bezüge", "225"],
+  ["kz230", "SV-Beiträge laufende Bezüge", "230"],
+  ["kz245", "Steuerpflichtige Bezüge", "245"],
+  ["kz260", "Einbehaltene Lohnsteuer", "260"],
+  ["kz717", "Gewerkschaftsbeiträge", "717"],
+  ["kz718", "Pendlerpauschale (Arbeitgeber)", "718"],
+  ["kz916", "Pendlereuro (Arbeitgeber)", "916"],
+  ["telearbeitspauschale", "Telearbeitspauschale (Arbeitgeber)", "–"],
 ];
 
-const emptyLst = (): LohnsteuerFields => ({
-  arbeitgeber: null, bruttoarbeitslohn: null, lohnsteuer: null, soli: null, kirchensteuer: null, kirchensteuerEhegatte: null,
-  lohnersatzleistungen: null, steuerfreieFahrtkosten: null, rvArbeitgeber: null, rvArbeitnehmer: null, zuschuesseKvPv: null,
-  kvArbeitnehmer: null, pvArbeitnehmer: null, alvArbeitnehmer: null, pkvBasis: null, steuerId: null,
+const emptyLz = (): LohnzettelFields => ({
+  arbeitgeber: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
+  kz717: null, kz718: null, kz916: null, telearbeitstage: null, telearbeitspauschale: null,
 });
 
 interface Upload { key: string; name: string; preview: string | null; status: "uploading" | "error"; error?: string }
@@ -37,13 +35,11 @@ export default function Belege() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [person, setPerson] = useState<0 | 1>(0);
   const [drag, setDrag] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const joint = data?.filing === "joint";
 
   const load = useCallback(async () => {
     const r = await api<{ documents: StoredDocument[]; aiEnabled: boolean }>(`/api/documents?year=${year}`);
@@ -64,7 +60,6 @@ export default function Belege() {
         const fd = new FormData();
         fd.append("file", file);
         fd.append("year", String(year));
-        fd.append("person", String(person));
         const r = await api<{ document: StoredDocument }>("/api/documents", { method: "POST", body: fd });
         setUploads((u) => u.filter((x) => x.key !== key));
         if (preview) setPreviews((p) => ({ ...p, [r.document.id]: preview }));
@@ -76,13 +71,13 @@ export default function Belege() {
     }
   }
 
-  async function patch(doc: StoredDocument, body: Partial<Pick<StoredDocument, "extraction" | "personIndex" | "childId" | "applied">>) {
+  async function patch(doc: StoredDocument, body: Partial<Pick<StoredDocument, "extraction" | "applied">>) {
     try {
       const r = await api<{ document: StoredDocument }>(`/api/documents/${doc.id}`, { method: "PATCH", json: body });
       setDocs((d) => d?.map((x) => (x.id === doc.id ? r.document : x)) ?? null);
       await reload();
       if (body.applied === true) {
-        toast.show("✓ In die Steuererklärung übernommen");
+        toast.show("✓ In die Arbeitnehmerveranlagung übernommen");
         setOpen(null);
       }
       if (body.applied === false) toast.show("Übernahme zurückgenommen");
@@ -107,17 +102,14 @@ export default function Belege() {
         <div>
           <p className="eyebrow">Schritt 2</p>
           <h1 className="title">Belege</h1>
-          <p className="muted" style={{ margin: "6px 0 0" }}>Fotografiere oder lade deine Belege hoch. Die KI erkennt alles, du bestätigst.</p>
+          <p className="muted" style={{ margin: "6px 0 0" }}>Lohnzettel (PDF aus FinanzOnline) und Rechnungen hochladen oder fotografieren. Die KI erkennt alles, du bestätigst.</p>
         </div>
-        {joint && (
-          <Segmented label="Beleg gehört zu" value={person} onChange={setPerson} options={[{ value: 0, label: data?.persons[0]?.firstName || "Person 1" }, { value: 1, label: data?.persons[1]?.firstName || "Person 2" }]} />
-        )}
       </header>
 
       {!aiEnabled && (
         <div className="notice notice-orange small">
           <span>🧪</span>
-          <span><strong>Demo-Modus:</strong> Es ist kein KI-Schlüssel hinterlegt. Hochgeladene Belege liefern Beispielwerte einer Lohnsteuerbescheinigung.</span>
+          <span><strong>Demo-Modus:</strong> Es ist kein KI-Schlüssel hinterlegt. Hochgeladene Belege liefern Beispielwerte eines Lohnzettels.</span>
         </div>
       )}
 
@@ -167,7 +159,7 @@ export default function Belege() {
           {pendingCount > 0 && <span className="badge badge-orange">{pendingCount} zu prüfen</span>}
         </div>
         {docs === null && <div className="shimmer" style={{ height: 80, borderRadius: 18 }} />}
-        {docs?.length === 0 && <p className="muted">Noch keine Belege. Starte mit deiner Lohnsteuerbescheinigung.</p>}
+        {docs?.length === 0 && <p className="muted">Noch keine Belege. Starte mit deinem Lohnzettel – du findest ihn in FinanzOnline unter „Abfragen“.</p>}
         {docs?.map((d) => (
           <DocumentCard
             key={d.id}
@@ -175,9 +167,6 @@ export default function Belege() {
             preview={previews[d.id]}
             open={open === d.id}
             onToggle={() => setOpen(open === d.id ? null : d.id)}
-            joint={!!joint}
-            persons={data?.persons.map((p, i) => p.firstName || `Person ${i + 1}`) ?? []}
-            kids={data?.children.map((c) => ({ id: c.id, name: c.firstName || "Kind" })) ?? []}
             onSave={(body) => patch(d, body)}
             onDelete={() => remove(d)}
           />
@@ -189,39 +178,33 @@ export default function Belege() {
 }
 
 function DocumentCard({
-  doc, preview, open, onToggle, joint, persons, kids, onSave, onDelete,
+  doc, preview, open, onToggle, onSave, onDelete,
 }: {
-  doc: StoredDocument; preview?: string; open: boolean; onToggle: () => void; joint: boolean; persons: string[];
-  kids: { id: string; name: string }[];
-  onSave: (b: Partial<Pick<StoredDocument, "extraction" | "personIndex" | "childId" | "applied">>) => Promise<void>;
+  doc: StoredDocument; preview?: string; open: boolean; onToggle: () => void;
+  onSave: (b: Partial<Pick<StoredDocument, "extraction" | "applied">>) => Promise<void>;
   onDelete: () => void;
 }) {
   const [ex, setEx] = useState<Extraction>(doc.extraction);
-  const [personIndex, setPersonIndex] = useState(doc.personIndex);
-  const [childId, setChildId] = useState(doc.childId ?? kids[0]?.id);
   const [busy, setBusy] = useState(false);
   useEffect(() => setEx(doc.extraction), [doc.extraction]);
 
   const t = DOCUMENT_TYPES[ex.documentType];
-  const mainAmount =
-    ex.documentType === "lohnsteuerbescheinigung"
-      ? ex.lohnsteuerbescheinigung?.bruttoarbeitslohn
-      : ex.documentType === "handwerkerleistung" || ex.documentType === "haushaltsnahe_dienstleistung"
-        ? ex.beleg?.arbeitskosten
-        : ex.beleg?.betrag;
-  const isLabor = ex.documentType === "handwerkerleistung" || ex.documentType === "haushaltsnahe_dienstleistung";
+  const mainAmount = ex.documentType === "lohnzettel" ? ex.lohnzettel?.kz210 : ex.beleg ? belegAmount(ex) : null;
+  const ro = doc.applied;
+  const readOnly = (v: number) => <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{eur(v)}</div>;
 
   const setType = (type: DocumentType) =>
     setEx((e) => ({
       ...e,
       documentType: type,
-      lohnsteuerbescheinigung: type === "lohnsteuerbescheinigung" ? (e.lohnsteuerbescheinigung ?? emptyLst()) : e.lohnsteuerbescheinigung,
-      beleg: type !== "lohnsteuerbescheinigung" ? (e.beleg ?? { betrag: null, arbeitskosten: null, datum: null, beschreibung: "", empfaenger: null, unbarGezahlt: null }) : e.beleg,
+      lohnzettel: type === "lohnzettel" ? (e.lohnzettel ?? emptyLz()) : e.lohnzettel,
+      beleg: type !== "lohnzettel" ? (e.beleg ?? { betrag: null, datum: null, beschreibung: "", empfaenger: null, wkKategorie: type === "werbungskosten" ? "sonstige" : null, beruflicherAnteil: null }) : e.beleg,
     }));
+  const setBeleg = (patch: Partial<NonNullable<Extraction["beleg"]>>) => setEx((x) => ({ ...x, beleg: { ...x.beleg!, ...patch } }));
 
   async function save(applied: boolean) {
     setBusy(true);
-    await onSave({ extraction: ex, personIndex, childId, applied });
+    await onSave({ extraction: ex, applied });
     setBusy(false);
   }
 
@@ -231,9 +214,7 @@ function DocumentCard({
         <div className="doc-thumb">{preview ? <img src={preview} alt="" /> : t.icon}</div>
         <div className="grow">
           <div style={{ fontWeight: 600 }}>{t.label}</div>
-          <div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {ex.summary || doc.fileName}
-          </div>
+          <div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.summary || doc.fileName}</div>
         </div>
         {typeof mainAmount === "number" && <span className="num" style={{ fontWeight: 600 }}>{eur(mainAmount)}</span>}
         {doc.applied ? <span className="badge badge-green">✓ Übernommen</span> : <span className="badge badge-orange">Prüfen</span>}
@@ -258,45 +239,40 @@ function DocumentCard({
           <div className="grid grid-2" style={{ gap: 14 }}>
             <div className="field">
               <label>Belegart</label>
-              <select className="select" value={ex.documentType} onChange={(e) => setType(e.target.value as DocumentType)} disabled={doc.applied}>
+              <select className="select" value={ex.documentType} onChange={(e) => setType(e.target.value as DocumentType)} disabled={ro}>
                 {Object.entries(DOCUMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            {joint && (
+            {ex.documentType === "werbungskosten" && ex.beleg && (
               <div className="field">
-                <label>Gehört zu</label>
-                <select className="select" value={personIndex} onChange={(e) => setPersonIndex(Number(e.target.value))} disabled={doc.applied}>
-                  {persons.map((p, i) => <option key={i} value={i}>{p}</option>)}
-                </select>
-              </div>
-            )}
-            {ex.documentType === "kinderbetreuung" && (
-              <div className="field">
-                <label>Kind</label>
-                <select className="select" value={childId} onChange={(e) => setChildId(e.target.value)} disabled={doc.applied}>
-                  {kids.length === 0 && <option>Bitte zuerst unter „Über dich“ ein Kind anlegen</option>}
-                  {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+                <label>Kategorie (Kennzahl L1)</label>
+                <select className="select" value={ex.beleg.wkKategorie ?? "sonstige"} disabled={ro} onChange={(e) => setBeleg({ wkKategorie: e.target.value as WkKategorie })}>
+                  {Object.entries(WK_KATEGORIEN).map(([k, v]) => <option key={k} value={k}>{v.label} · KZ {v.kz}</option>)}
                 </select>
               </div>
             )}
           </div>
 
-          {ex.documentType === "lohnsteuerbescheinigung" && ex.lohnsteuerbescheinigung && (
+          {ex.documentType === "lohnzettel" && ex.lohnzettel && (
             <div className="stack" style={{ "--gap": "12px" } as React.CSSProperties}>
-              <div className="field">
-                <label>Arbeitgeber</label>
-                <input className="input" value={ex.lohnsteuerbescheinigung.arbeitgeber ?? ""} disabled={doc.applied}
-                  onChange={(e) => setEx((x) => ({ ...x, lohnsteuerbescheinigung: { ...x.lohnsteuerbescheinigung!, arbeitgeber: e.target.value } }))} />
+              <div className="grid grid-2" style={{ gap: 12 }}>
+                <div className="field">
+                  <label>Arbeitgeber</label>
+                  <input className="input" value={ex.lohnzettel.arbeitgeber ?? ""} disabled={ro} onChange={(e) => setEx((x) => ({ ...x, lohnzettel: { ...x.lohnzettel!, arbeitgeber: e.target.value } }))} />
+                </div>
+                <div className="field">
+                  <label>Telearbeitstage</label>
+                  {ro ? <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{ex.lohnzettel.telearbeitstage ?? 0}</div> : (
+                    <NumberInput value={ex.lohnzettel.telearbeitstage ?? 0} onChange={(v) => setEx((x) => ({ ...x, lohnzettel: { ...x.lohnzettel!, telearbeitstage: v } }))} suffix="Tage" />
+                  )}
+                </div>
               </div>
               <div className="grid grid-2" style={{ gap: 12 }}>
-                {LST_FIELDS.map(([k, label, zeile]) => (
+                {LZ_FIELDS.map(([k, label, kz]) => (
                   <div className="field" key={k}>
-                    <label>{label} <span className="tiny" style={{ color: "var(--accent)" }}>Zeile {zeile}</span></label>
-                    {doc.applied ? (
-                      <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{eur(Number(ex.lohnsteuerbescheinigung![k] ?? 0))}</div>
-                    ) : (
-                      <MoneyInput value={Number(ex.lohnsteuerbescheinigung![k] ?? 0)}
-                        onChange={(v) => setEx((x) => ({ ...x, lohnsteuerbescheinigung: { ...x.lohnsteuerbescheinigung!, [k]: v } }))} />
+                    <label>{label} {kz !== "–" && <span className="tiny" style={{ color: "var(--accent)" }}>KZ {kz}</span>}</label>
+                    {ro ? readOnly(Number(ex.lohnzettel![k] ?? 0)) : (
+                      <MoneyInput value={Number(ex.lohnzettel![k] ?? 0)} onChange={(v) => setEx((x) => ({ ...x, lohnzettel: { ...x.lohnzettel!, [k]: v } }))} />
                     )}
                   </div>
                 ))}
@@ -304,25 +280,23 @@ function DocumentCard({
             </div>
           )}
 
-          {ex.documentType !== "lohnsteuerbescheinigung" && ex.documentType !== "unbekannt" && ex.beleg && (
+          {ex.documentType !== "lohnzettel" && ex.documentType !== "unbekannt" && ex.beleg && (
             <div className="grid grid-2" style={{ gap: 12 }}>
               <div className="field" style={{ gridColumn: "1 / -1" }}>
                 <label>Beschreibung</label>
-                <input className="input" value={ex.beleg.beschreibung} disabled={doc.applied} onChange={(e) => setEx((x) => ({ ...x, beleg: { ...x.beleg!, beschreibung: e.target.value } }))} />
+                <input className="input" value={ex.beleg.beschreibung} disabled={ro} onChange={(e) => setBeleg({ beschreibung: e.target.value })} />
               </div>
               <div className="field">
-                <label>Gesamtbetrag</label>
-                {doc.applied ? <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{eur(ex.beleg.betrag ?? 0)}</div> : (
-                  <MoneyInput value={ex.beleg.betrag ?? 0} onChange={(v) => setEx((x) => ({ ...x, beleg: { ...x.beleg!, betrag: v } }))} />
-                )}
+                <label>Betrag</label>
+                {ro ? readOnly(ex.beleg.betrag ?? 0) : <MoneyInput value={ex.beleg.betrag ?? 0} onChange={(v) => setBeleg({ betrag: v })} />}
               </div>
-              {isLabor && (
+              {ex.documentType === "werbungskosten" && (
                 <div className="field">
-                  <label>Davon Arbeitskosten</label>
-                  {doc.applied ? <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{eur(ex.beleg.arbeitskosten ?? 0)}</div> : (
-                    <MoneyInput value={ex.beleg.arbeitskosten ?? 0} onChange={(v) => setEx((x) => ({ ...x, beleg: { ...x.beleg!, arbeitskosten: v } }))} />
+                  <label>Beruflicher Anteil</label>
+                  {ro ? <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{Math.round((ex.beleg.beruflicherAnteil ?? 1) * 100)} %</div> : (
+                    <NumberInput value={Math.round((ex.beleg.beruflicherAnteil ?? 1) * 100)} max={100} suffix="%" onChange={(v) => setBeleg({ beruflicherAnteil: v / 100 })} />
                   )}
-                  <span className="help">Nur Arbeit, Maschinen, Fahrt – ohne Material. Nur bei Überweisung begünstigt.</span>
+                  <span className="help">Bei privater Mitnutzung (z. B. Laptop) nur den beruflichen Anteil ansetzen.</span>
                 </div>
               )}
             </div>

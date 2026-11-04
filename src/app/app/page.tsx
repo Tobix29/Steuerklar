@@ -8,42 +8,40 @@ export default function Overview() {
   if (error && !data) return <div className="notice notice-red">{error}</div>;
   if (!data || !result) return <Skeleton />;
 
-  const p = data.persons[0]!;
-  const hasProfile = !!p.firstName;
-  const hasIncome = data.persons.some((x) => x.employments.length > 0);
-  const hasDeductions = p.commuteDays > 0 || p.homeofficeDays > 0 || p.workExpenses.length > 0;
+  const hasProfile = !!data.firstName;
+  const hasIncome = data.lohnzettel.length > 0;
+  const hasDeductions = data.pendlerKm > 0 || data.telearbeitstage > 0 || data.werbungskosten.length > 0;
   const steps = [
-    { href: "/app/profil", title: "Über dich", text: "Familie, Arbeitsweg, Homeoffice", done: hasProfile },
-    { href: "/app/belege", title: "Lohnsteuerbescheinigung", text: "Foto oder PDF hochladen", done: hasIncome },
-    { href: "/app/belege", title: "Weitere Belege", text: "Spenden, Handwerker, Arbeitsmittel", done: documentCount > 1 || hasDeductions },
-    { href: "/app/ergebnis", title: "Prüfen & abgeben", text: "Erklärung herunterladen", done: false },
+    { href: "/app/profil", title: "Über dich", text: "Arbeitsweg, Telearbeit, Kinder", done: hasProfile },
+    { href: "/app/belege", title: "Lohnzettel (L16)", text: "PDF aus FinanzOnline oder Foto", done: hasIncome },
+    { href: "/app/belege", title: "Weitere Belege", text: "Arbeitsmittel, Fortbildung, Arzt", done: documentCount > 1 || hasDeductions },
+    { href: "/app/ergebnis", title: "In FinanzOnline abgeben", text: "Kennzahlen übertragen", done: false },
   ];
   const done = steps.filter((s) => s.done).length;
   const refund = result.erstattung;
 
   const tips: { icon: string; text: string; href: string }[] = [];
-  if (hasIncome && p.homeofficeDays === 0) tips.push({ icon: "🏠", text: "Im Homeoffice gearbeitet? Bis zu 1.260 € Pauschale sind möglich.", href: "/app/profil" });
-  if (hasIncome && p.commuteDays === 0) tips.push({ icon: "🚗", text: "Trage deinen Arbeitsweg ein – jeder Kilometer zählt.", href: "/app/profil" });
-  if (hasIncome && p.workExpenses.length === 0) tips.push({ icon: "💻", text: "Laptop, Fachbücher, Fortbildung? Arbeitsmittel senken deine Steuer.", href: "/app/belege" });
-  if (data.handwerkerleistungen.length === 0 && data.haushaltsnaheDienstleistungen.length === 0)
-    tips.push({ icon: "🛠️", text: "Nebenkostenabrechnung oder Handwerker? 20 % der Arbeitskosten gibt’s direkt zurück.", href: "/app/belege" });
+  if (hasIncome && data.pendlerKm === 0) tips.push({ icon: "🚆", text: "Weiter Arbeitsweg? Pendlerpauschale und Pendlereuro bringen oft mehrere hundert Euro.", href: "/app/profil" });
+  if (hasIncome && data.telearbeitstage === 0) tips.push({ icon: "🏠", text: "Im Homeoffice gearbeitet? Telearbeitspauschale und Mobiliar bis 300 € sind absetzbar.", href: "/app/profil" });
+  if (hasIncome && data.werbungskosten.length === 0) tips.push({ icon: "💻", text: "Laptop, Fachbücher, Kurse? Werbungskosten über 132 € senken deine Steuer.", href: "/app/belege" });
+  if (data.children.length === 0) tips.push({ icon: "👶", text: "Kinder? Der Familienbonus Plus bringt bis zu 2.000 € pro Kind und Jahr.", href: "/app/profil" });
 
   return (
     <div className="stack fade-in" style={{ "--gap": "28px" } as React.CSSProperties}>
       <header className="app-header">
         <div>
           <p className="eyebrow">Steuerjahr {year}</p>
-          <h1 className="title">{hasProfile ? `Hallo ${p.firstName}.` : "Willkommen bei Steuerklar."}</h1>
+          <h1 className="title">{hasProfile ? `Servus ${data.firstName}.` : "Willkommen bei Steuerklar."}</h1>
         </div>
       </header>
 
       <section className="card card-lg center">
-        <p className="muted small" style={{ margin: 0 }}>{refund >= 0 ? "Voraussichtliche Erstattung" : "Voraussichtliche Nachzahlung"}</p>
+        <p className="muted small" style={{ margin: 0 }}>{refund >= 0 ? "Voraussichtliche Gutschrift" : "Voraussichtliche Nachforderung"}</p>
         <div className={`big-number ${hasIncome ? (refund >= 0 ? "refund" : "payment") : ""}`} style={{ margin: "8px 0" }}>
           {hasIncome ? eur(Math.abs(refund), 0) : "– €"}
         </div>
         <p className="muted small" style={{ margin: 0 }}>
-          {hasIncome ? "Wird bei jeder Eingabe live neu berechnet." : "Lade deine Lohnsteuerbescheinigung hoch, um deine Erstattung zu sehen."}
+          {hasIncome ? "Wird bei jeder Eingabe live neu berechnet." : "Lade deinen Lohnzettel hoch, um deine Gutschrift zu sehen."}
         </p>
         <div className="row" style={{ justifyContent: "center", marginTop: 22, flexWrap: "wrap" }}>
           <Link className="btn" href="/app/belege">📸 Beleg hinzufügen</Link>
@@ -87,7 +85,7 @@ export default function Overview() {
         <div className="notice notice-orange small">
           <span>⚠️</span>
           <div>
-            <strong>Mögliche Abgabepflicht</strong>
+            <strong>Mögliche Pflichtveranlagung</strong>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {result.pflichtveranlagung.map((x) => <li key={x}>{x}</li>)}
             </ul>

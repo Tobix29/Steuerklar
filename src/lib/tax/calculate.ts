@@ -1,297 +1,295 @@
 /**
- * Einkommensteuer-Berechnung für Arbeitnehmer:innen (Veranlagung nach §25 EStG).
+ * Arbeitnehmerveranlagung Österreich (Einkünfte aus nichtselbständiger Arbeit).
  *
- * Abgedeckt: Einkünfte aus nichtselbständiger Arbeit, Werbungskosten
- * (Entfernungspauschale, Homeoffice, Arbeitsmittel …), Vorsorgeaufwendungen,
- * Kirchensteuer, Spenden, Kinderbetreuung, Krankheitskosten (§33),
- * §35a-Ermäßigungen, Kinderfreibeträge mit Günstigerprüfung, Entlastungsbetrag
- * für Alleinerziehende, Progressionsvorbehalt, Splittingtarif, Soli, Kirchensteuer.
+ * Abgedeckt: Lohnzettel (mehrere Dienstgeber), Werbungskosten inkl. Pauschale, Pendlerpauschale
+ * und Pendlereuro (Aliquotierung), Telearbeitspauschale, ergonomisches Mobiliar, Sonderausgaben
+ * (Kirchenbeitrag, Spenden, Steuerberatung), Krankheitskosten mit Selbstbehalt, Familienbonus Plus,
+ * Alleinverdiener-/Alleinerzieherabsetzbetrag, Verkehrsabsetzbetrag inkl. Zuschlag,
+ * SV-Rückerstattung, Kindermehrbetrag (vereinfacht), Steuer auf sonstige Bezüge (Jahressechstel).
  *
- * Nicht abgedeckt (→ Hinweis an Nutzer:innen): Selbständige/Gewerbe, Vermietung,
- * Kapitalerträge über dem Sparer-Pauschbetrag, Renten, Verlustvorträge,
- * Auslandseinkünfte, doppelte Haushaltsführung.
+ * Nicht abgedeckt (→ Hinweis): Selbständige, Vermietung, Kapitalerträge, Pensionen,
+ * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
-import { BUNDESLAENDER, KONTOFUEHRUNG_PAUSCHALE, PARA35A, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
-import type { Line, Person, PersonResult, TaxCase, TaxResult } from "./types";
+import { SELBSTBEHALT, SONSTIGE_BEZUEGE, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
+import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
-const floorCents = (n: number) => Math.floor(Number((n * 100).toFixed(6))) / 100;
 const sum = (xs: { amount: number }[]) => cents(xs.reduce((a, x) => a + x.amount, 0));
+const eur = (n: number) => n.toLocaleString("de-AT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** Grundtarif §32a Abs. 1 EStG. Ergebnis auf volle Euro abgerundet. */
-export function grundtarif(zvE: number, p: YearParams): number {
-  const x = Math.floor(Math.max(0, zvE));
-  const t = p.tariff;
-  let tax: number;
-  if (x <= t.gfb) tax = 0;
-  else if (x <= t.z2End) {
-    const y = (x - t.gfb) / 10000;
-    tax = (t.z2a * y + 1400) * y;
-  } else if (x <= t.z3End) {
-    const z = (x - t.z2End) / 10000;
-    tax = (t.z3a * z + 2397) * z + t.z3c;
-  } else if (x <= t.z4End) tax = 0.42 * x - t.z4c;
-  else tax = 0.45 * x - t.z5c;
-  return Math.floor(tax + 1e-9);
-}
-
-/** Tarifliche ESt, bei Zusammenveranlagung Splittingverfahren (§32a Abs. 5 EStG). */
-export function tarif(zvE: number, joint: boolean, p: YearParams): number {
-  if (!joint) return grundtarif(zvE, p);
-  return 2 * grundtarif(Math.floor(Math.max(0, zvE)) / 2, p);
-}
-
-/** Tarifliche ESt inkl. Progressionsvorbehalt (§32b EStG). */
-export function tarifMitProgression(zvE: number, progression: number, joint: boolean, p: YearParams) {
-  const base = Math.floor(Math.max(0, zvE));
-  if (progression <= 0 || base <= 0) return { tax: tarif(base, joint, p), rate: null as number | null };
-  const extended = Math.floor(Math.max(0, base + progression));
-  if (extended <= 0) return { tax: 0, rate: 0 };
-  const rate = Math.floor((tarif(extended, joint, p) / extended) * 10000) / 10000; // auf 4 Nachkommastellen
-  return { tax: Math.floor(base * rate), rate };
-}
-
-/** Solidaritätszuschlag inkl. Freigrenze und Milderungszone (§§3, 4 SolZG). */
-export function solidaritaetszuschlag(bmg: number, joint: boolean, p: YearParams): number {
-  const fg = p.soliFreigrenzeSingle * (joint ? 2 : 1);
-  if (bmg <= fg) return 0;
-  return floorCents(Math.min(0.055 * bmg, 0.119 * (bmg - fg)));
-}
-
-export function entfernungspauschale(km: number, days: number, p: YearParams): number {
-  const k = Math.floor(Math.max(0, km)); // nur volle Kilometer
-  const perDay = Math.min(k, 20) * p.entfernung.first20 + Math.max(k - 20, 0) * p.entfernung.from21;
-  return cents(perDay * Math.max(0, days));
-}
-
-/** Zumutbare Belastung §33 Abs. 3 EStG – stufenweise Berechnung (BFH VI R 75/14). */
-export function zumutbareBelastung(gde: number, joint: boolean, kids: number): number {
-  const rates =
-    kids >= 3 ? [0.01, 0.01, 0.02] : kids >= 1 ? [0.02, 0.03, 0.04] : joint ? [0.04, 0.05, 0.06] : [0.05, 0.06, 0.07];
-  const bounds = [15340, 51130, Infinity];
+/** Tarifsteuer §33 Abs 1 EStG (stufenweise). */
+export function tarifsteuer(einkommen: number, p: YearParams): number {
   let prev = 0;
-  let total = 0;
-  for (let i = 0; i < 3; i++) {
-    const upper = bounds[i]!;
-    const portion = Math.max(0, Math.min(gde, upper) - prev);
-    total += portion * rates[i]!;
-    prev = upper;
-    if (gde <= upper) break;
+  let tax = 0;
+  const x = Math.max(0, einkommen);
+  for (const b of p.brackets) {
+    if (x <= prev) break;
+    tax += (Math.min(x, b.upTo) - prev) * b.rate;
+    prev = b.upTo;
   }
-  return cents(total);
+  return cents(tax);
 }
 
-function personResult(person: Person, index: number, p: YearParams): PersonResult {
-  const e = person.employments;
-  const brutto = cents(e.reduce((a, x) => a + x.bruttoarbeitslohn, 0));
-  const fahrtErstattung = e.reduce((a, x) => a + x.steuerfreieFahrtkosten, 0);
-
-  const details: Line[] = [];
-  const fahrt = entfernungspauschale(person.commuteKm, person.commuteDays, p);
-  if (fahrt > 0) {
-    const net = cents(Math.max(0, fahrt - fahrtErstattung));
-    details.push({
-      label: `Entfernungspauschale (${person.commuteDays} Tage × ${Math.floor(person.commuteKm)} km)`,
-      amount: net,
-      hint: fahrtErstattung > 0 ? `abzgl. ${fahrtErstattung.toFixed(2)} € steuerfreie Arbeitgebererstattung` : undefined,
-    });
+/** Steuer auf sonstige Bezüge innerhalb des Jahressechstels (§67 Abs 1). */
+export function steuerSonstigeBezuege(betragNachSv: number): number {
+  const x = Math.max(0, betragNachSv);
+  if (x <= SONSTIGE_BEZUEGE.freigrenze) return 0;
+  let rest = x;
+  let tax = 0;
+  for (const band of SONSTIGE_BEZUEGE.bands) {
+    const part = Math.min(rest, band.size);
+    tax += part * band.rate;
+    rest -= part;
+    if (rest <= 0) break;
   }
-  const hoDays = Math.min(person.homeofficeDays, p.homeofficeMaxDays);
-  if (hoDays > 0) {
-    details.push({
-      label: `Homeoffice-Pauschale (${hoDays} Tage × ${p.homeofficePerDay} €)`,
-      amount: cents(hoDays * p.homeofficePerDay),
-      hint: person.homeofficeDays > p.homeofficeMaxDays ? `begrenzt auf ${p.homeofficeMaxDays} Tage` : undefined,
-    });
+  // Teile über 83.333 € werden in der Praxis wie laufende Bezüge versteuert → Hinweis im Ergebnis
+  return cents(tax);
+}
+
+/** Aliquotierung nach Fahrten pro Monat (§16 Abs 1 Z 6 lit e EStG). */
+export function pendlerFaktor(fahrtenProMonat: number): number {
+  if (fahrtenProMonat >= 11) return 1;
+  if (fahrtenProMonat >= 8) return 2 / 3;
+  if (fahrtenProMonat >= 4) return 1 / 3;
+  return 0;
+}
+
+export function pendlerpauschale(km: number, zumutbar: boolean, fahrten: number, p: YearParams): number {
+  const f = pendlerFaktor(fahrten);
+  let full = 0;
+  if (zumutbar) {
+    if (km > 60) full = p.pendlerKlein.from60;
+    else if (km > 40) full = p.pendlerKlein.from40;
+    else if (km >= 20) full = p.pendlerKlein.from20;
+  } else {
+    if (km > 60) full = p.pendlerGross.from60;
+    else if (km > 40) full = p.pendlerGross.from40;
+    else if (km > 20) full = p.pendlerGross.from20;
+    else if (km >= 2) full = p.pendlerGross.from2;
   }
-  if (person.kontofuehrung && e.length > 0) details.push({ label: "Kontoführungsgebühren (Pauschale)", amount: KONTOFUEHRUNG_PAUSCHALE });
-  for (const w of person.workExpenses) details.push({ label: w.label || "Werbungskosten", amount: cents(w.amount) });
+  return cents(full * f);
+}
 
-  const tatsaechlich = sum(details);
-  const pausch = brutto > 0 ? Math.min(p.arbeitnehmerPauschbetrag, brutto) : 0;
-  const angesetzt = tatsaechlich > pausch ? tatsaechlich : pausch;
+export function selbstbehalt(basis: number, reductionPoints: number): number {
+  const tier = SELBSTBEHALT.find((s) => basis <= s.upTo)!;
+  const rate = Math.max(0, tier.rate - reductionPoints / 100);
+  return cents(Math.max(0, basis) * rate);
+}
 
-  return {
-    name: [person.firstName, person.lastName].filter(Boolean).join(" ") || (index === 0 ? "Person 1" : "Person 2"),
-    bruttoarbeitslohn: brutto,
-    werbungskostenTatsaechlich: tatsaechlich,
-    werbungskostenAngesetzt: cents(angesetzt),
-    werbungskostenDetails: details,
-    einkuenfte: cents(brutto - angesetzt),
-    progressionsvorbehalt: cents(e.reduce((a, x) => a + x.lohnersatzleistungen, 0) + person.weitereLohnersatzleistungen),
-    withheld: {
-      lohnsteuer: cents(e.reduce((a, x) => a + x.lohnsteuer, 0)),
-      soli: cents(e.reduce((a, x) => a + x.soli, 0)),
-      kirchensteuer: cents(e.reduce((a, x) => a + x.kirchensteuer + x.kirchensteuerEhegatte, 0)),
-    },
-  };
+export function avabBetrag(kids: number, p: YearParams): number {
+  if (kids <= 0) return 0;
+  if (kids === 1) return p.avab.oneChild;
+  return p.avab.twoChildren + (kids - 2) * p.avab.perFurtherChild;
+}
+
+/** Verkehrsabsetzbetrag inkl. Zuschlag (linear eingeschliffen). */
+export function verkehrsabsetzbetrag(einkommen: number, p: YearParams): { vab: number; zuschlag: number } {
+  const z = p.vabZuschlag;
+  let zuschlag = 0;
+  if (einkommen <= z.from) zuschlag = z.amount;
+  else if (einkommen < z.to) zuschlag = cents((z.amount * (z.to - einkommen)) / (z.to - z.from));
+  return { vab: p.vab, zuschlag };
 }
 
 export function calculate(input: TaxCase): TaxResult {
   const year = input.year as TaxYear;
   const p = YEAR_PARAMS[year];
-  const joint = input.filing === "joint" && input.persons.length === 2;
-  const persons = (joint ? input.persons : input.persons.slice(0, 1)).map((x, i) => personResult(x, i, p));
-  const factor = joint ? 2 : 1;
+  const lz = input.lohnzettel;
   const hinweise: string[] = [];
   const pflicht: string[] = [];
+  const formular: FormEntry[] = [];
+  const hasEmployment = lz.length > 0;
 
-  const gde = cents(persons.reduce((a, x) => a + x.einkuenfte, 0));
-  const progression = cents(persons.reduce((a, x) => a + x.progressionsvorbehalt, 0));
-  const kids = input.children.filter((c) => c.months > 0);
+  /* ---- Bezüge laut Lohnzettel ---- */
+  // KZ 245 ist bereits um die vom Arbeitgeber berücksichtigte Pendlerpauschale (KZ 718) gekürzt.
+  // In der Veranlagung wird die tatsächlich zustehende Pauschale angesetzt → KZ 718 zurückrechnen.
+  const laufend = cents(lz.reduce((a, x) => a + x.kz245 + x.kz718, 0));
+  const sonstige = cents(lz.reduce((a, x) => a + Math.max(0, x.kz220 - x.kz225), 0));
+  const steuerSonst = steuerSonstigeBezuege(sonstige);
+  if (sonstige > 83_333) hinweise.push("Sonstige Bezüge über 83.333 € werden wie laufende Bezüge besteuert – dies ist hier vereinfacht.");
+  const sv = cents(lz.reduce((a, x) => a + x.kz230 + x.kz225, 0));
 
-  /* ---- Entlastungsbetrag für Alleinerziehende (§24b) ---- */
-  let entlastung = 0;
-  if (!joint && input.alleinerziehend && kids.length > 0) {
-    entlastung = p.entlastungAlleinerziehend.base + p.entlastungAlleinerziehend.perAdditionalChild * (kids.length - 1);
+  /* ---- Werbungskosten ---- */
+  const wk: Line[] = [];
+  const pp = pendlerpauschale(input.pendlerKm, input.oeffiZumutbar, input.fahrtenProMonat, p);
+  const pendlerAnspruch = pp > 0;
+  if (pendlerAnspruch) {
+    wk.push({
+      label: `${input.oeffiZumutbar ? "Kleines" : "Großes"} Pendlerpauschale (${Math.round(input.pendlerKm)} km)`,
+      amount: pp,
+      kz: "718",
+      hint: pendlerFaktor(input.fahrtenProMonat) < 1 ? "anteilig wegen weniger Fahrten pro Monat" : undefined,
+    });
+    formular.push({ formular: "L1", kz: "718", label: "Pendlerpauschale – tatsächlich zustehender Jahresbetrag", value: `€ ${eur(pp)}` });
+  } else if (input.pendlerKm > 0 && input.fahrtenProMonat >= 4) {
+    hinweise.push(input.oeffiZumutbar ? "Kein Pendlerpauschale: Bei zumutbaren Öffis erst ab 20 km." : "Kein Pendlerpauschale: Erst ab 2 km Arbeitsweg.");
   }
+
+  const teleTage = Math.min(input.telearbeitstage, p.telearbeit.maxDays);
+  const teleDiff = cents(Math.max(0, teleTage * p.telearbeit.perDay - input.telearbeitspauschaleArbeitgeber));
+  if (teleDiff > 0) wk.push({ label: `Telearbeitspauschale (${teleTage} Tage × ${p.telearbeit.perDay} € abzgl. Arbeitgeber)`, amount: teleDiff, hint: "wird bei korrekt gemeldeten Tagen am Lohnzettel automatisch berücksichtigt" });
+  const mob = Math.min(input.mobiliar, p.mobiliarMax);
+  if (mob > 0) {
+    if (input.telearbeitstage < 26) hinweise.push("Ergonomisches Mobiliar ist erst ab 26 Telearbeitstagen absetzbar.");
+    else {
+      wk.push({ label: "Ergonomisch geeignetes Mobiliar", amount: cents(mob), kz: "158", hint: input.mobiliar > p.mobiliarMax ? `max. ${p.mobiliarMax} € pro Jahr` : undefined });
+      formular.push({ formular: "L1", kz: "158", label: "Ergonomisch geeignetes Mobiliar", value: `€ ${eur(mob)}` });
+    }
+  }
+  // Pendler, Telearbeit und Mobiliar werden ohne Anrechnung auf die Werbungskostenpauschale berücksichtigt.
+  const ohneAnrechnung = sum(wk);
+
+  const byKz = new Map<string, number>();
+  for (const w of input.werbungskosten) {
+    const cat = WK_KATEGORIEN[w.category ?? "sonstige"];
+    byKz.set(cat.kz, cents((byKz.get(cat.kz) ?? 0) + w.amount));
+  }
+  const sonstigeWk = cents([...byKz.values()].reduce((a, b) => a + b, 0));
+  const pauschale = hasEmployment ? p.werbungskostenpauschale : 0;
+  if (sonstigeWk > pauschale) {
+    for (const [kz, amount] of byKz) {
+      const cat = Object.values(WK_KATEGORIEN).find((c) => c.kz === kz)!;
+      wk.push({ label: cat.label, amount, kz });
+      formular.push({ formular: "L1", kz, label: cat.label, value: `€ ${eur(amount)}` });
+    }
+  } else if (pauschale > 0) {
+    wk.push({ label: "Werbungskostenpauschale", amount: pauschale, hint: sonstigeWk > 0 ? `deine Ausgaben (${eur(sonstigeWk)} €) liegen darunter` : "automatisch berücksichtigt" });
+  }
+  const wkSumme = cents(ohneAnrechnung + Math.max(sonstigeWk, pauschale));
+  const einkuenfte = cents(laufend - wkSumme);
 
   /* ---- Sonderausgaben ---- */
-  const all = (joint ? input.persons : input.persons.slice(0, 1)).flatMap((x) => x.employments);
   const sa: Line[] = [];
-
-  const rvAG = all.reduce((a, x) => a + x.rvArbeitgeber, 0);
-  const rvAN = all.reduce((a, x) => a + x.rvArbeitnehmer, 0);
-  const altersvorsorge = cents(Math.max(0, Math.min(rvAG + rvAN, p.altersvorsorgeHoechstbetrag * factor) - rvAG));
-  if (altersvorsorge > 0) sa.push({ label: "Altersvorsorge (Rentenversicherung, Arbeitnehmeranteil)", amount: altersvorsorge });
-
-  const kvGesetzlich = all.reduce((a, x) => a + x.kvArbeitnehmer, 0) * 0.96; // −4 % wegen Krankengeldanspruch
-  const pv = all.reduce((a, x) => a + x.pvArbeitnehmer, 0);
-  const pkv = Math.max(0, all.reduce((a, x) => a + x.pkvBasis - x.zuschuesseKvPv, 0));
-  const basis = cents(kvGesetzlich + pv + pkv);
-  const alv = all.reduce((a, x) => a + x.alvArbeitnehmer, 0);
-  const sonstige = cents(Math.max(basis, Math.min(basis + alv, p.sonstigeVorsorgeMax * factor)));
-  if (sonstige > 0)
-    sa.push({
-      label: "Kranken-, Pflege- & Arbeitslosenversicherung",
-      amount: sonstige,
-      hint: sonstige < basis + alv ? "Arbeitslosenversicherung durch Höchstbetrag begrenzt" : undefined,
-    });
-
-  const pauschfaehig: Line[] = [];
-  const kist = cents(persons.reduce((a, x) => a + x.withheld.kirchensteuer, 0));
-  if (kist > 0) pauschfaehig.push({ label: "Gezahlte Kirchensteuer", amount: kist });
-
-  let betreuung = 0;
-  for (const c of input.children) {
-    if (c.betreuungskosten <= 0) continue;
-    if (year - c.birthYear >= 14) {
-      hinweise.push(`Kinderbetreuungskosten für ${c.firstName || "ein Kind"} nicht berücksichtigt (Kind ist 14 oder älter).`);
-      continue;
-    }
-    betreuung += Math.min(c.betreuungskosten * p.kinderbetreuung.share, p.kinderbetreuung.max);
+  if (input.kirchenbeitrag > 0) {
+    sa.push({ label: "Kirchenbeitrag", amount: Math.min(input.kirchenbeitrag, p.kirchenbeitragMax), hint: input.kirchenbeitrag > p.kirchenbeitragMax ? `max. ${p.kirchenbeitragMax} €` : "wird von der Kirche automatisch übermittelt" });
   }
-  if (betreuung > 0) pauschfaehig.push({ label: "Kinderbetreuungskosten", amount: cents(betreuung) });
-
   const spenden = sum(input.spenden);
   if (spenden > 0) {
-    const cap = cents(Math.max(0, gde) * 0.2);
-    pauschfaehig.push({
-      label: "Spenden und Mitgliedsbeiträge",
-      amount: Math.min(spenden, cap),
-      hint: spenden > cap ? "auf 20 % des Gesamtbetrags der Einkünfte begrenzt" : undefined,
-    });
+    const cap = cents(Math.max(0, einkuenfte) * 0.1);
+    sa.push({ label: "Spenden", amount: Math.min(spenden, cap), hint: spenden > cap ? "max. 10 % des Gesamtbetrags der Einkünfte" : "wird von der Organisation automatisch übermittelt" });
   }
-  const pauschbetrag = p.sonderausgabenPauschbetrag * factor;
-  if (sum(pauschfaehig) < pauschbetrag) sa.push({ label: "Sonderausgaben-Pauschbetrag", amount: pauschbetrag });
-  else sa.push(...pauschfaehig);
+  const stb = sum(input.steuerberatung);
+  if (stb > 0) {
+    sa.push({ label: "Steuerberatungskosten", amount: stb, kz: "460" });
+    formular.push({ formular: "L1", kz: "460", label: "Steuerberatungskosten", value: `€ ${eur(stb)}` });
+  }
   const saSumme = sum(sa);
+  const einkommenVorAgb = cents(einkuenfte - saSumme);
 
-  /* ---- Außergewöhnliche Belastungen (§33) ---- */
+  /* ---- Außergewöhnliche Belastungen ---- */
+  const kids = input.children.filter((c) => c.months > 0);
+  const avabBerechtigt =
+    kids.length > 0 &&
+    (input.familienstatus === "alleinerzieher" || (input.familienstatus === "alleinverdiener" && input.partnerEinkuenfte <= p.avabPartnerIncomeLimit));
+  if (input.familienstatus === "alleinverdiener" && input.partnerEinkuenfte > p.avabPartnerIncomeLimit)
+    hinweise.push(`Kein Alleinverdienerabsetzbetrag: Die Einkünfte deiner Partnerin/deines Partners übersteigen ${eur(p.avabPartnerIncomeLimit)} €.`);
+
   const agb: Line[] = [];
   const krank = sum(input.krankheitskosten);
   if (krank > 0) {
-    const zumutbar = zumutbareBelastung(Math.max(0, gde), joint, kids.length);
-    const abziehbar = cents(Math.max(0, krank - zumutbar));
-    agb.push({ label: "Krankheitskosten nach Abzug der zumutbaren Belastung", amount: abziehbar, hint: `zumutbare Belastung: ${zumutbar.toFixed(2)} €` });
-    if (abziehbar === 0) hinweise.push("Ihre Krankheitskosten liegen unter der zumutbaren Belastung und wirken sich nicht aus.");
+    const sb = selbstbehalt(einkommenVorAgb + sonstige, (avabBerechtigt ? 1 : 0) + kids.length);
+    const abziehbar = cents(Math.max(0, krank - sb));
+    agb.push({ label: "Krankheitskosten nach Selbstbehalt", amount: abziehbar, kz: "730", hint: `Selbstbehalt: ${eur(sb)} €` });
+    formular.push({ formular: "L1", kz: "730", label: "Krankheitskosten (vor Selbstbehalt)", value: `€ ${eur(krank)}` });
+    if (abziehbar === 0) hinweise.push("Deine Krankheitskosten liegen unter dem Selbstbehalt und wirken sich nicht aus.");
   }
   const agbSumme = sum(agb);
+  const einkommen = Math.max(0, cents(einkommenVorAgb - agbSumme));
 
-  /* ---- zu versteuerndes Einkommen & Kinder-Günstigerprüfung ---- */
-  const einkommen = Math.floor(gde - entlastung - saSumme - agbSumme);
-  const kfb = Math.floor(kids.reduce((a, c) => a + p.kinderfreibetragGesamt * c.share * (c.months / 12), 0));
-  const kindergeld = cents(kids.reduce((a, c) => a + p.kindergeldMonat * c.months * c.share, 0));
+  /* ---- Tarif und Absetzbeträge ---- */
+  const tarif = tarifsteuer(einkommen, p);
+  const abs: Line[] = [];
+  const neg: Line[] = [];
 
-  const ohneKfb = tarifMitProgression(einkommen, progression, joint, p);
-  const mitKfb = tarifMitProgression(einkommen - kfb, progression, joint, p);
-  const kfbGuenstiger = kfb > 0 && ohneKfb.tax - mitKfb.tax > kindergeld;
-  const zvE = Math.max(0, kfbGuenstiger ? einkommen - kfb : einkommen);
-  const tariflich = kfbGuenstiger ? mitKfb : ohneKfb;
-
-  /* ---- §35a Steuerermäßigungen ---- */
-  const erm: Line[] = [];
-  const hd = sum(input.haushaltsnaheDienstleistungen);
-  const hw = sum(input.handwerkerleistungen);
-  if (input.minijobImHaushalt > 0) erm.push({ label: "Minijob im Haushalt (20 %)", amount: cents(Math.min(input.minijobImHaushalt * PARA35A.minijobShare, PARA35A.minijobMax)) });
-  if (hd > 0) erm.push({ label: "Haushaltsnahe Dienstleistungen (20 % der Arbeitskosten)", amount: cents(Math.min(hd * PARA35A.dienstleistungShare, PARA35A.dienstleistungMax)) });
-  if (hw > 0) erm.push({ label: "Handwerkerleistungen (20 % der Arbeitskosten)", amount: cents(Math.min(hw * PARA35A.handwerkerShare, PARA35A.handwerkerMax)) });
-  const ermSumme = sum(erm);
-
-  const estNachErm = Math.max(0, Math.floor(tariflich.tax - ermSumme));
-  const hinzurechnung = kfbGuenstiger ? kindergeld : 0;
-  const est = cents(estNachErm + hinzurechnung);
-
-  /* ---- Zuschlagsteuern: Bemessungsgrundlage immer mit Kinderfreibeträgen (§51a EStG) ---- */
-  const bmg = Math.max(0, Math.floor(mitKfb.tax - ermSumme));
-  const soli = solidaritaetszuschlag(bmg, joint, p);
-  const rate = BUNDESLAENDER.find((b) => b.code === input.bundesland)?.kist ?? 0.09;
-  const members = (joint ? input.persons : input.persons.slice(0, 1)).map((x) => x.churchMember);
-  let kistShare = 0;
-  if (members.every(Boolean)) kistShare = 1;
-  else if (members.some(Boolean)) {
-    // Konfessionsverschiedene/glaubensverschiedene Ehe: Aufteilung im Verhältnis der Einzel-ESt (vereinfacht)
-    const single = persons.map((x) => grundtarif(Math.max(0, x.einkuenfte), p));
-    const total = single.reduce((a, b) => a + b, 0);
-    kistShare = total > 0 ? members.reduce((a, m, i) => a + (m ? single[i]! / total : 0), 0) : 0.5;
+  let fb = 0;
+  for (const c of kids) {
+    const age = year - c.birthYear;
+    const full = age < 18 ? p.familienbonus.under18 : p.familienbonus.over18;
+    fb += full * (c.months / 12) * c.familienbonusShare;
   }
-  const kirchensteuer = floorCents(bmg * kistShare * rate);
+  fb = cents(fb);
+  const fbWirksam = Math.min(fb, tarif);
+  if (fb > 0) {
+    abs.push({ label: "Familienbonus Plus", amount: fbWirksam, hint: fbWirksam < fb ? `Anspruch ${eur(fb)} € – kann die Steuer nur bis 0 senken` : undefined });
+    formular.push({ formular: "L1k", kz: "—", label: "Familienbonus Plus beantragen (je Kind ein L1k)", value: kids.map((k) => `${k.firstName || "Kind"}: ${k.familienbonusShare === 1 ? "ganz" : "Hälfte"}`).join(", ") });
+  }
+  let steuer = cents(tarif - fbWirksam);
 
-  const festSumme = cents(est + soli + kirchensteuer);
-  const gezahlt = {
-    lohnsteuer: cents(persons.reduce((a, x) => a + x.withheld.lohnsteuer, 0)),
-    soli: cents(persons.reduce((a, x) => a + x.withheld.soli, 0)),
-    kirchensteuer: kist,
-  };
-  const gezahltSumme = cents(gezahlt.lohnsteuer + gezahlt.soli + gezahlt.kirchensteuer);
+  const { vab, zuschlag } = hasEmployment ? verkehrsabsetzbetrag(einkommen, p) : { vab: 0, zuschlag: 0 };
+  const pendlereuro = pendlerAnspruch ? cents(input.pendlerKm * p.pendlereuroPerKm * pendlerFaktor(input.fahrtenProMonat)) : 0;
+  if (vab > 0) abs.push({ label: "Verkehrsabsetzbetrag", amount: vab });
+  if (zuschlag > 0) abs.push({ label: "Zuschlag zum Verkehrsabsetzbetrag", amount: zuschlag, hint: "für niedrige Einkommen" });
+  if (pendlereuro > 0) {
+    abs.push({ label: `Pendlereuro (${Math.round(input.pendlerKm)} km × ${p.pendlereuroPerKm} €)`, amount: pendlereuro, kz: "916" });
+    formular.push({ formular: "L1", kz: "916", label: "Pendlereuro – zustehender Jahresbetrag", value: `€ ${eur(pendlereuro)}` });
+  }
+  // Pendlereuro wirkt nur bis 0; VAB und Zuschlag können über die SV-Rückerstattung zu einer Gutschrift führen.
+  steuer = cents(Math.max(0, steuer - pendlereuro) - vab - zuschlag);
+  if (steuer < 0) {
+    const cap = (pendlerAnspruch ? p.svRueckerstattung.maxPendler : p.svRueckerstattung.max) + zuschlag;
+    const svRe = cents(Math.min(-steuer, sv * p.svRueckerstattung.rate, cap));
+    if (svRe > 0) neg.push({ label: "SV-Rückerstattung", amount: svRe, hint: `${p.svRueckerstattung.rate * 100} % der SV-Beiträge` });
+    steuer = -svRe;
+  }
+
+  if (avabBerechtigt) {
+    const a = avabBetrag(kids.length, p);
+    neg.push({ label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag" : "Alleinverdienerabsetzbetrag", amount: a, hint: "wird auch ohne Steuerschuld ausbezahlt" });
+    formular.push({ formular: "L1", kz: "—", label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag beantragen" : "Alleinverdienerabsetzbetrag beantragen", value: `${kids.length} Kind(er)` });
+    steuer = cents(steuer - a);
+  }
+
+  // Kindermehrbetrag (vereinfacht): Differenz zwischen 700 € je Kind und der Steuer vor Familienbonus
+  if (kids.length > 0 && (avabBerechtigt || hasEmployment)) {
+    const kmb = cents(Math.max(0, p.kindermehrbetrag * kids.length - tarif));
+    if (kmb > 0 && tarif < p.kindermehrbetrag * kids.length) {
+      neg.push({ label: "Kindermehrbetrag", amount: kmb, hint: "vereinfachte Berechnung" });
+      steuer = cents(steuer - kmb);
+    }
+  }
+
+  const est = cents(steuer + steuerSonst);
+  const lst = cents(lz.reduce((a, x) => a + x.kz260, 0));
+  const erstattung = cents(lst - est);
 
   /* ---- Steuersätze ---- */
-  const grenz = zvE > 0 ? (tarif(zvE + 100, joint, p) - tarif(zvE, joint, p)) / 100 : 0;
-  const brutto = persons.reduce((a, x) => a + x.bruttoarbeitslohn, 0);
+  const grenz = einkommen > 0 ? (tarifsteuer(einkommen + 100, p) - tarifsteuer(einkommen, p)) / 100 : 0;
+  const brutto = lz.reduce((a, x) => a + x.kz210, 0);
 
-  /* ---- Hinweise & Pflichtveranlagung (§46 EStG) ---- */
-  if (!p.verified) hinweise.push(`Die Parameter für ${year} sind vorläufig. Die Berechnung ist eine Prognose.`);
-  if (progression > 410) pflicht.push("Lohnersatzleistungen (z. B. Elterngeld, Kurzarbeitergeld) über 410 € – Abgabe ist Pflicht.");
-  if (input.persons.some((x) => x.employments.length > 1)) pflicht.push("Mehrere Arbeitsverhältnisse – bei Steuerklasse VI ist die Abgabe Pflicht.");
-  if (joint) pflicht.push("Bei Steuerklassenkombination III/V oder IV mit Faktor ist die Abgabe Pflicht.");
-  if (kfbGuenstiger) hinweise.push("Die Kinderfreibeträge sind günstiger als das Kindergeld; das Kindergeld wird der Steuer hinzugerechnet.");
-  if (persons.some((x) => x.werbungskostenAngesetzt > x.werbungskostenTatsaechlich))
-    hinweise.push("Ihre Werbungskosten liegen unter dem Arbeitnehmer-Pauschbetrag – der Pauschbetrag wird automatisch angesetzt.");
-  if (gde < 0) hinweise.push("Negativer Gesamtbetrag der Einkünfte: Ein Verlustvortrag wird in dieser Version nicht berechnet.");
+  /* ---- Hinweise & Pflichtveranlagung (§41 EStG) ---- */
+  if (p.unverified.length) hinweise.push(`Einige Parameter für ${year} sind noch nicht amtlich verifiziert – das Ergebnis ist eine Prognose.`);
+  if (lz.length > 1) pflicht.push("Mehrere Lohnzettel im selben Zeitraum – die Arbeitnehmerveranlagung ist dann meist verpflichtend (Frist: 30. September des Folgejahres).");
+  if (lz.some((x) => x.kz718 > 0) && Math.abs(lz.reduce((a, x) => a + x.kz718, 0) - pp) > 1)
+    pflicht.push("Die vom Arbeitgeber berücksichtigte Pendlerpauschale weicht vom zustehenden Betrag ab – bei zu hohem Betrag besteht Pflicht zur Veranlagung.");
+  if (!hasEmployment) hinweise.push("Lade deinen Lohnzettel (L16) hoch – du findest ihn in FinanzOnline unter „Abfragen“.");
+  if (input.spenden.length || input.kirchenbeitrag > 0) hinweise.push("Spenden und Kirchenbeitrag werden automatisch an das Finanzamt übermittelt – bitte nicht zusätzlich eintragen.");
+  if (erstattung > 0 && pflicht.length === 0 && hasEmployment)
+    hinweise.push("Gibst du keine Erklärung ab, kann die antragslose Arbeitnehmerveranlagung greifen – Werbungskosten und Familienbonus werden dann aber nicht berücksichtigt.");
 
   return {
     year,
-    filing: joint ? "joint" : "single",
-    provisional: !p.verified,
-    persons,
-    gesamtbetragDerEinkuenfte: gde,
+    provisional: p.unverified.length > 0,
+    unverified: p.unverified,
+    laufendeBezuege: laufend,
+    sonstigeBezuege: sonstige,
+    steuerSonstigeBezuege: steuerSonst,
+    werbungskosten: wk,
+    werbungskostenSumme: wkSumme,
+    einkuenfte,
     sonderausgaben: sa,
     sonderausgabenSumme: saSumme,
     aussergewoehnlicheBelastungen: agb,
     aussergewoehnlicheBelastungenSumme: agbSumme,
-    kinderfreibetraegeAngesetzt: kfbGuenstiger,
-    kinderfreibetraege: kfb,
-    entlastungsbetragAlleinerziehend: entlastung,
-    zuVersteuerndesEinkommen: zvE,
-    tariflicheEinkommensteuer: tariflich.tax,
-    steuersatzProgression: tariflich.rate,
-    steuerermaessigung35a: erm,
-    kindergeldHinzurechnung: hinzurechnung,
-    festzusetzen: { einkommensteuer: est, soli, kirchensteuer, summe: festSumme },
-    bereitsGezahlt: { ...gezahlt, summe: gezahltSumme },
-    erstattung: cents(gezahltSumme - festSumme),
+    einkommen,
+    tarifsteuer: tarif,
+    absetzbetraege: abs,
+    negativsteuer: neg,
+    einkommensteuer: est,
+    anrechenbareLohnsteuer: lst,
+    erstattung,
     grenzsteuersatz: Math.round(grenz * 1000) / 1000,
-    durchschnittssteuersatz: brutto > 0 ? Math.round((festSumme / brutto) * 1000) / 1000 : 0,
+    durchschnittssteuersatz: brutto > 0 ? Math.round((Math.max(0, est) / brutto) * 1000) / 1000 : 0,
+    formular,
     hinweise,
     pflichtveranlagung: pflicht,
   };

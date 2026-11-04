@@ -12,8 +12,6 @@ const idFrom = (req: Request) => {
 
 const PatchSchema = z.object({
   extraction: ExtractionSchema.optional(),
-  personIndex: z.union([z.literal(0), z.literal(1)]).optional(),
-  childId: z.string().max(64).optional(),
   applied: z.boolean().optional(),
 });
 
@@ -26,10 +24,9 @@ export const PATCH = route({ auth: true, rate: { name: "doc", limit: 200, window
   const year = parseYear(String(doc.year));
   let data = loadCase(user, year);
 
-  if (doc.applied) data = unapplyDocument(data, doc);
+  // Bisherige Buchung mit den alten Werten entfernen, bevor neue Werte übernommen werden.
+  data = unapplyDocument(data, doc);
   if (body.extraction) doc.extraction = sanitizeExtraction(body.extraction);
-  if (body.personIndex !== undefined) doc.personIndex = body.personIndex;
-  if (body.childId !== undefined) doc.childId = body.childId;
   const shouldApply = body.applied ?? doc.applied;
 
   if (shouldApply) {

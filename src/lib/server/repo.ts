@@ -15,10 +15,6 @@ export interface StoredDocument {
   uploadedAt: number;
   demo: boolean;
   extraction: Extraction;
-  /** Person, der der Beleg zugeordnet ist (0 oder 1) */
-  personIndex: number;
-  /** Kind, dem Betreuungskosten zugeordnet sind */
-  childId?: string;
   applied: boolean;
   /** Bei Übernahme in den Steuerfall verbuchter Betrag (für Rücknahme) */
   appliedAmount?: number;

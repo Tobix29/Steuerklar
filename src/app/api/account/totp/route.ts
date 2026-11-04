@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 import { z } from "zod";
-import { audit, checkCredentials, revokeAllSessions, createSession } from "@/lib/server/auth";
+import { audit, checkCredentials, revokeAllSessions, createSession, requestKind } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { HttpError, json, parseJson, route } from "@/lib/server/guard";
 import { decryptJson, encryptJson, newTotpSecret, verifyTotp } from "@/lib/security/crypto";
@@ -25,10 +25,11 @@ export const POST = route({ auth: true, rate: { name: "totp", limit: 20, windowM
       .prepare("UPDATE users SET totp_secret_enc = ?, totp_last_counter = ? WHERE id = ?")
       .run(encryptJson(user.dek, body.secret, `totp:${user.userId}`), counter, user.userId);
     await audit(user.userId, "mfa_enabled");
-    // Alle anderen Sitzungen beenden
+    // Alle Sitzungen beenden und für dieses Gerät eine neue ausstellen
     await revokeAllSessions(user.userId);
-    await createSession(user.userId, false);
-    return json({ ok: true });
+    const kind = await requestKind();
+    const token = await createSession(user.userId, false, kind);
+    return json(kind === "mobile" ? { ok: true, token } : { ok: true });
   }
   const cred = await checkCredentials(user.email, body.password);
   if (!cred.ok) throw new HttpError(401, "Passwort ist falsch.");

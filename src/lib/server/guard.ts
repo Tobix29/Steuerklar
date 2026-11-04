@@ -35,6 +35,10 @@ export const json = (data: unknown, status = 200) =>
  */
 function assertSameOrigin(req: Request) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return;
+  // Native App: Bearer-Token bzw. Header „X-Client: mobile“ statt Cookie → kein CSRF-Risiko,
+  // denn Browser können diese Header cross-origin nur nach CORS-Preflight setzen, und CORS ist nicht freigegeben.
+  const mobile = req.headers.get("authorization")?.startsWith("Bearer ") || req.headers.get("x-client") === "mobile";
+  if (mobile && !req.headers.get("cookie")?.includes("__Host-sk_session")) return;
   const origin = req.headers.get("origin");
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   if (!origin || !host) throw new HttpError(403, "Ungültige Herkunft der Anfrage.");

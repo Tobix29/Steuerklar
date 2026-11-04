@@ -1,160 +1,179 @@
 /**
- * Steuerliche Parameter je Veranlagungsjahr.
+ * Steuerliche Parameter Österreich je Veranlagungsjahr (Arbeitnehmerveranlagung).
  *
- * Quellen: §32a EStG (Tarif), §3 SolZG (Soli-Freigrenze), §9 Abs. 2 EStG
- * (Entfernungspauschale), §9a EStG (Arbeitnehmer-Pauschbetrag), §10 Abs. 3 EStG
- * (Höchstbetrag Altersvorsorge), §32 Abs. 6 EStG (Kinderfreibeträge), §66 EStG (Kindergeld).
+ * Rechtsgrundlagen: §33 EStG 1988 (Tarif, Absetzbeträge), §16 Abs 1 Z 6 EStG (Pendlerpauschale),
+ * §33 Abs 5 Z 4 (Pendlereuro), §16 Abs 3 (Werbungskostenpauschale), §18 (Sonderausgaben),
+ * §34 (außergewöhnliche Belastungen), §67 (sonstige Bezüge), §33 Abs 3a (Familienbonus Plus).
  *
- * WICHTIG: Jede Änderung hier muss gegen den amtlichen Gesetzestext geprüft
- * und durch einen Test in `calculate.test.ts` abgesichert werden.
- * Werte mit `verified: false` sind vorläufig und vor Produktivbetrieb zu prüfen.
+ * Seit 2023 werden Tarifstufen und Absetzbeträge jährlich an die Inflation angepasst
+ * (Abschaffung der kalten Progression). Werte in `unverified` sind aus Sekundärquellen
+ * übernommen bzw. widersprüchlich belegt und MÜSSEN vor dem Produktivbetrieb gegen
+ * EStG (RIS) und das BMF-Steuerbuch geprüft werden. Jede Änderung → Test in calculate.test.ts.
  */
 
 export type TaxYear = 2024 | 2025 | 2026;
 export const SUPPORTED_YEARS: TaxYear[] = [2024, 2025, 2026];
+/** Im Herbst 2026 wird typischerweise die Arbeitnehmerveranlagung 2025 gemacht. */
 export const DEFAULT_YEAR: TaxYear = 2025;
 
-export interface TariffZones {
-  /** Grundfreibetrag */
-  gfb: number;
-  /** Obergrenze Zone 2 (erste Progressionszone) */
-  z2End: number;
-  z2a: number; // Faktor y²
-  /** Obergrenze Zone 3 (zweite Progressionszone) */
-  z3End: number;
-  z3a: number; // Faktor z²
-  z3c: number; // Konstante
-  /** Obergrenze Zone 4 (42 %) */
-  z4End: number;
-  z4c: number;
-  z5c: number;
+export interface Bracket {
+  /** Obergrenze der Stufe (Einkommen in €) */
+  upTo: number;
+  rate: number;
 }
 
 export interface YearParams {
   year: TaxYear;
-  verified: boolean;
-  tariff: TariffZones;
-  soliFreigrenzeSingle: number;
-  arbeitnehmerPauschbetrag: number;
-  sonderausgabenPauschbetrag: number;
-  /** Entfernungspauschale €/km für km 1–20 und ab km 21 */
-  entfernung: { first20: number; from21: number };
-  homeofficePerDay: number;
-  homeofficeMaxDays: number;
-  /** Höchstbetrag Altersvorsorgeaufwendungen (Einzelveranlagung) */
-  altersvorsorgeHoechstbetrag: number;
-  /** Höchstbetrag sonstige Vorsorgeaufwendungen für Arbeitnehmer */
-  sonstigeVorsorgeMax: number;
-  /** Kinderfreibetrag + BEA-Freibetrag (beide Elternteile zusammen) je Kind */
-  kinderfreibetragGesamt: number;
-  kindergeldMonat: number;
-  /** Kinderbetreuungskosten: abziehbarer Anteil und Höchstbetrag je Kind */
-  kinderbetreuung: { share: number; max: number };
-  entlastungAlleinerziehend: { base: number; perAdditionalChild: number };
+  /** Liste der Parameter, die noch nicht gegen Primärquellen geprüft sind */
+  unverified: string[];
+  brackets: Bracket[];
+  werbungskostenpauschale: number;
+  /** Verkehrsabsetzbetrag */
+  vab: number;
+  /** Zuschlag zum Verkehrsabsetzbetrag und Einschleifbereich (Einkommen) */
+  vabZuschlag: { amount: number; from: number; to: number };
+  /** Pendlereuro je km einfacher Strecke und Jahr */
+  pendlereuroPerKm: number;
+  /** Jahresbeträge Pendlerpauschale */
+  pendlerKlein: { from20: number; from40: number; from60: number };
+  pendlerGross: { from2: number; from20: number; from40: number; from60: number };
+  /** Familienbonus Plus pro Kind und Jahr */
+  familienbonus: { under18: number; over18: number };
+  /** Kindermehrbetrag pro Kind (Negativsteuer für Geringverdienende) */
+  kindermehrbetrag: number;
+  /** Alleinverdiener-/Alleinerzieherabsetzbetrag */
+  avab: { oneChild: number; twoChildren: number; perFurtherChild: number };
+  avabPartnerIncomeLimit: number;
+  /** SV-Rückerstattung: Anteil der SV-Beiträge und Höchstbeträge */
+  svRueckerstattung: { rate: number; max: number; maxPendler: number };
+  kirchenbeitragMax: number;
+  telearbeit: { perDay: number; maxDays: number };
+  mobiliarMax: number;
 }
 
 export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
   2024: {
     year: 2024,
-    verified: true,
-    tariff: {
-      gfb: 11784,
-      z2End: 17005, z2a: 954.8,
-      z3End: 66760, z3a: 181.19, z3c: 991.21,
-      z4End: 277825, z4c: 10636.31,
-      z5c: 18971.06,
-    },
-    soliFreigrenzeSingle: 18130,
-    arbeitnehmerPauschbetrag: 1230,
-    sonderausgabenPauschbetrag: 36,
-    entfernung: { first20: 0.3, from21: 0.38 },
-    homeofficePerDay: 6,
-    homeofficeMaxDays: 210,
-    altersvorsorgeHoechstbetrag: 27566,
-    sonstigeVorsorgeMax: 1900,
-    kinderfreibetragGesamt: 9540,
-    kindergeldMonat: 250,
-    kinderbetreuung: { share: 2 / 3, max: 4000 },
-    entlastungAlleinerziehend: { base: 4260, perAdditionalChild: 240 },
+    unverified: ["vabZuschlag", "svRueckerstattung.maxPendler", "avabPartnerIncomeLimit"],
+    brackets: [
+      { upTo: 12816, rate: 0 },
+      { upTo: 20818, rate: 0.2 },
+      { upTo: 34513, rate: 0.3 },
+      { upTo: 66612, rate: 0.4 },
+      { upTo: 99266, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 463,
+    vabZuschlag: { amount: 752, from: 18499, to: 28326 },
+    pendlereuroPerKm: 2,
+    pendlerKlein: { from20: 696, from40: 1356, from60: 2016 },
+    pendlerGross: { from2: 372, from20: 1476, from40: 2568, from60: 3672 },
+    familienbonus: { under18: 2000.16, over18: 700.08 },
+    kindermehrbetrag: 700,
+    avab: { oneChild: 572, twoChildren: 774, perFurtherChild: 255 },
+    avabPartnerIncomeLimit: 6937,
+    svRueckerstattung: { rate: 0.55, max: 463, maxPendler: 579 },
+    kirchenbeitragMax: 600,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
   },
   2025: {
     year: 2025,
-    verified: true,
-    tariff: {
-      gfb: 12096,
-      z2End: 17443, z2a: 932.3,
-      z3End: 68480, z3a: 176.64, z3c: 1015.13,
-      z4End: 277825, z4c: 10911.92,
-      z5c: 19246.67,
-    },
-    soliFreigrenzeSingle: 19950,
-    arbeitnehmerPauschbetrag: 1230,
-    sonderausgabenPauschbetrag: 36,
-    entfernung: { first20: 0.3, from21: 0.38 },
-    homeofficePerDay: 6,
-    homeofficeMaxDays: 210,
-    altersvorsorgeHoechstbetrag: 29344,
-    sonstigeVorsorgeMax: 1900,
-    kinderfreibetragGesamt: 9600,
-    kindergeldMonat: 255,
-    kinderbetreuung: { share: 0.8, max: 4800 },
-    entlastungAlleinerziehend: { base: 4260, perAdditionalChild: 240 },
+    unverified: ["svRueckerstattung.maxPendler", "avabPartnerIncomeLimit"],
+    brackets: [
+      { upTo: 13308, rate: 0 },
+      { upTo: 21617, rate: 0.2 },
+      { upTo: 35836, rate: 0.3 },
+      { upTo: 69166, rate: 0.4 },
+      { upTo: 103072, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 487,
+    vabZuschlag: { amount: 790, from: 19424, to: 29743 },
+    pendlereuroPerKm: 2,
+    pendlerKlein: { from20: 696, from40: 1356, from60: 2016 },
+    pendlerGross: { from2: 372, from20: 1476, from40: 2568, from60: 3672 },
+    familienbonus: { under18: 2000.16, over18: 700.08 },
+    kindermehrbetrag: 700,
+    avab: { oneChild: 601, twoChildren: 813, perFurtherChild: 268 },
+    avabPartnerIncomeLimit: 7284,
+    svRueckerstattung: { rate: 0.55, max: 487, maxPendler: 608 },
+    kirchenbeitragMax: 600,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
   },
   2026: {
     year: 2026,
-    // Vorläufig: vor Produktivbetrieb gegen BGBl. prüfen (insb. Höchstbetrag Altersvorsorge).
-    verified: false,
-    tariff: {
-      gfb: 12348,
-      z2End: 17799, z2a: 914.51,
-      z3End: 69878, z3a: 173.1, z3c: 1034.87,
-      z4End: 277825, z4c: 11135.63,
-      z5c: 19470.38,
-    },
-    soliFreigrenzeSingle: 20350,
-    arbeitnehmerPauschbetrag: 1230,
-    sonderausgabenPauschbetrag: 36,
-    // Ab 2026: 0,38 €/km ab dem ersten Kilometer
-    entfernung: { first20: 0.38, from21: 0.38 },
-    homeofficePerDay: 6,
-    homeofficeMaxDays: 210,
-    altersvorsorgeHoechstbetrag: 30826,
-    sonstigeVorsorgeMax: 1900,
-    kinderfreibetragGesamt: 9756,
-    kindergeldMonat: 259,
-    kinderbetreuung: { share: 0.8, max: 4800 },
-    entlastungAlleinerziehend: { base: 4260, perAdditionalChild: 240 },
+    unverified: ["vab", "vabZuschlag", "svRueckerstattung", "familienbonus.over18", "avabPartnerIncomeLimit"],
+    brackets: [
+      { upTo: 13539, rate: 0 },
+      { upTo: 21992, rate: 0.2 },
+      { upTo: 36458, rate: 0.3 },
+      { upTo: 70365, rate: 0.4 },
+      { upTo: 104859, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 496,
+    vabZuschlag: { amount: 804, from: 19761, to: 30259 },
+    // Ab 2026 verdreifacht (6 € statt 2 € je km)
+    pendlereuroPerKm: 6,
+    pendlerKlein: { from20: 696, from40: 1356, from60: 2016 },
+    pendlerGross: { from2: 372, from20: 1476, from40: 2568, from60: 3672 },
+    familienbonus: { under18: 2000.16, over18: 700.08 },
+    kindermehrbetrag: 700,
+    avab: { oneChild: 612, twoChildren: 828, perFurtherChild: 273 },
+    avabPartnerIncomeLimit: 7411,
+    svRueckerstattung: { rate: 0.55, max: 496, maxPendler: 614 },
+    kirchenbeitragMax: 600,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
   },
 };
 
-/** Kirchensteuersatz: 8 % in Bayern und Baden-Württemberg, sonst 9 %. */
-export const BUNDESLAENDER = [
-  { code: "BW", name: "Baden-Württemberg", kist: 0.08 },
-  { code: "BY", name: "Bayern", kist: 0.08 },
-  { code: "BE", name: "Berlin", kist: 0.09 },
-  { code: "BB", name: "Brandenburg", kist: 0.09 },
-  { code: "HB", name: "Bremen", kist: 0.09 },
-  { code: "HH", name: "Hamburg", kist: 0.09 },
-  { code: "HE", name: "Hessen", kist: 0.09 },
-  { code: "MV", name: "Mecklenburg-Vorpommern", kist: 0.09 },
-  { code: "NI", name: "Niedersachsen", kist: 0.09 },
-  { code: "NW", name: "Nordrhein-Westfalen", kist: 0.09 },
-  { code: "RP", name: "Rheinland-Pfalz", kist: 0.09 },
-  { code: "SL", name: "Saarland", kist: 0.09 },
-  { code: "SN", name: "Sachsen", kist: 0.09 },
-  { code: "ST", name: "Sachsen-Anhalt", kist: 0.09 },
-  { code: "SH", name: "Schleswig-Holstein", kist: 0.09 },
-  { code: "TH", name: "Thüringen", kist: 0.09 },
-] as const;
-
-export type BundeslandCode = (typeof BUNDESLAENDER)[number]["code"];
-
-/** §35a EStG */
-export const PARA35A = {
-  minijobShare: 0.2, minijobMax: 510,
-  dienstleistungShare: 0.2, dienstleistungMax: 4000,
-  handwerkerShare: 0.2, handwerkerMax: 1200,
+/** Besteuerung sonstiger Bezüge innerhalb des Jahressechstels (§67 Abs 1 EStG). */
+export const SONSTIGE_BEZUEGE = {
+  freigrenze: 2100,
+  bands: [
+    { size: 620, rate: 0 },
+    { size: 24380, rate: 0.06 },
+    { size: 25000, rate: 0.27 },
+    { size: 33333, rate: 0.3575 },
+  ],
 };
 
-/** Pauschale Kontoführungsgebühren, von der Finanzverwaltung ohne Nachweis anerkannt. */
-export const KONTOFUEHRUNG_PAUSCHALE = 16;
+/** Selbstbehalt bei außergewöhnlichen Belastungen (§34 Abs 4 EStG) */
+export const SELBSTBEHALT = [
+  { upTo: 7300, rate: 0.06 },
+  { upTo: 14600, rate: 0.08 },
+  { upTo: 36400, rate: 0.1 },
+  { upTo: Infinity, rate: 0.12 },
+];
+
+export const BUNDESLAENDER = [
+  { code: "B", name: "Burgenland" },
+  { code: "K", name: "Kärnten" },
+  { code: "N", name: "Niederösterreich" },
+  { code: "O", name: "Oberösterreich" },
+  { code: "S", name: "Salzburg" },
+  { code: "St", name: "Steiermark" },
+  { code: "T", name: "Tirol" },
+  { code: "V", name: "Vorarlberg" },
+  { code: "W", name: "Wien" },
+] as const;
+
+/** Werbungskosten-Kategorien mit Kennzahl im Formular L1 (Zuordnung vor Produktivbetrieb verifizieren). */
+export const WK_KATEGORIEN = {
+  digitale_arbeitsmittel: { label: "Digitale Arbeitsmittel (Computer, Internet)", kz: "169" },
+  arbeitsmittel: { label: "Arbeitsmittel (Werkzeug, Berufskleidung)", kz: "719" },
+  fachliteratur: { label: "Fachliteratur", kz: "720" },
+  reisekosten: { label: "Beruflich veranlasste Reisekosten", kz: "721" },
+  fortbildung: { label: "Fort-, Ausbildung und Umschulung", kz: "722" },
+  sonstige: { label: "Sonstige Werbungskosten", kz: "724" },
+} as const;
+export type WkKategorie = keyof typeof WK_KATEGORIEN;

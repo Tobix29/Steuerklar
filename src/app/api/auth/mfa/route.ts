@@ -19,7 +19,7 @@ export const POST = route({ auth: false, rate: { name: "mfa", limit: 10, windowM
     throw new HttpError(401, "Der Code ist ungültig.");
   }
   db().prepare("UPDATE users SET totp_last_counter = ? WHERE id = ?").run(counter, s.userId);
-  await completeMfa(s.idHash);
-  await audit(s.userId, "login");
+  await completeMfa(s.idHash, s.kind);
+  await audit(s.userId, `login_${s.kind}`);
   return json({ ok: true });
 });

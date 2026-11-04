@@ -6,8 +6,12 @@ import { blindIndex, encryptJson, decryptJson, newWrappedDataKey, randomToken, s
 import { db } from "./db";
 
 export const SESSION_COOKIE = "__Host-sk_session";
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 Minuten Inaktivität
-const ABSOLUTE_TIMEOUT_MS = 12 * 60 * 60 * 1000; // spätestens nach 12 Stunden neu anmelden
+export type SessionKind = "web" | "mobile";
+/** Web: 30 min Leerlauf / 12 h absolut. Mobile: längere Laufzeit, dafür App-Sperre per Face ID/Fingerabdruck. */
+const TIMEOUTS: Record<SessionKind, { idle: number; absolute: number }> = {
+  web: { idle: 30 * 60 * 1000, absolute: 12 * 60 * 60 * 1000 },
+  mobile: { idle: 14 * 24 * 60 * 60 * 1000, absolute: 30 * 24 * 60 * 60 * 1000 },
+};
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60 * 1000;
 
@@ -74,56 +78,76 @@ export async function checkCredentials(email: string, password: string): Promise
 
 /* ---------- Sessions ---------- */
 
-export async function createSession(userId: string, mfaPending: boolean) {
+/**
+ * Legt eine Sitzung an. Web: Token als __Host-Cookie. Mobile: Token wird zurückgegeben und
+ * von der App im Secure Enclave/Keystore-geschützten Speicher (Keychain/Keystore) abgelegt.
+ */
+export async function createSession(userId: string, mfaPending: boolean, kind: SessionKind = "web"): Promise<string> {
   const token = randomToken(32);
   const now = Date.now();
+  const t = TIMEOUTS[kind];
   db()
-    .prepare("INSERT INTO sessions (id_hash, user_id, created_at, last_seen, expires_at, mfa_pending) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(sha256(token), userId, now, now, now + ABSOLUTE_TIMEOUT_MS, mfaPending ? 1 : 0);
-  // Alte Sessions aufräumen
-  db().prepare("DELETE FROM sessions WHERE expires_at < ? OR last_seen < ?").run(now, now - IDLE_TIMEOUT_MS);
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-    path: "/",
-    maxAge: ABSOLUTE_TIMEOUT_MS / 1000,
-  });
+    .prepare("INSERT INTO sessions (id_hash, user_id, created_at, last_seen, expires_at, mfa_pending, kind) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(sha256(token), userId, now, now, now + (mfaPending ? 10 * 60 * 1000 : t.absolute), mfaPending ? 1 : 0, kind);
+  // Abgelaufene Sessions aufräumen
+  db()
+    .prepare("DELETE FROM sessions WHERE expires_at < ? OR (kind = 'web' AND last_seen < ?) OR (kind = 'mobile' AND last_seen < ?)")
+    .run(now, now - TIMEOUTS.web.idle, now - TIMEOUTS.mobile.idle);
+  if (kind === "web") {
+    const jar = await cookies();
+    jar.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "strict", path: "/", maxAge: t.absolute / 1000 });
+  }
+  return token;
+}
+
+/** Liest das Sitzungstoken aus dem Cookie (Web) oder dem Authorization-Header (native App). */
+async function readToken(): Promise<{ token: string; kind: SessionKind } | null> {
+  const auth = (await headers()).get("authorization");
+  if (auth?.startsWith("Bearer ")) return { token: auth.slice(7).trim(), kind: "mobile" };
+  const c = (await cookies()).get(SESSION_COOKIE)?.value;
+  return c ? { token: c, kind: "web" } : null;
+}
+
+export async function requestKind(): Promise<SessionKind> {
+  const h = await headers();
+  return h.get("authorization")?.startsWith("Bearer ") || h.get("x-client") === "mobile" ? "mobile" : "web";
 }
 
 export async function destroySession() {
-  const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) db().prepare("DELETE FROM sessions WHERE id_hash = ?").run(sha256(token));
-  jar.delete(SESSION_COOKIE);
+  const t = await readToken();
+  if (t) db().prepare("DELETE FROM sessions WHERE id_hash = ?").run(sha256(t.token));
+  if (t?.kind !== "mobile") (await cookies()).delete(SESSION_COOKIE);
 }
 
 export interface SessionInfo {
   userId: string;
   mfaPending: boolean;
   idHash: string;
+  kind: SessionKind;
 }
 
 export async function getSession(): Promise<SessionInfo | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token || token.length > 100) return null;
-  const idHash = sha256(token);
-  const row = db().prepare("SELECT user_id, last_seen, expires_at, mfa_pending FROM sessions WHERE id_hash = ?").get(idHash) as
-    | { user_id: string; last_seen: number; expires_at: number; mfa_pending: number }
+  const t = await readToken();
+  if (!t || t.token.length > 100) return null;
+  const idHash = sha256(t.token);
+  const row = db().prepare("SELECT user_id, last_seen, expires_at, mfa_pending, kind FROM sessions WHERE id_hash = ?").get(idHash) as
+    | { user_id: string; last_seen: number; expires_at: number; mfa_pending: number; kind: SessionKind }
     | undefined;
-  if (!row) return null;
+  // Ein Web-Token darf nicht als Bearer-Token verwendet werden und umgekehrt.
+  if (!row || row.kind !== t.kind) return null;
   const now = Date.now();
-  if (row.expires_at < now || row.last_seen + IDLE_TIMEOUT_MS < now) {
+  if (row.expires_at < now || row.last_seen + TIMEOUTS[row.kind].idle < now) {
     db().prepare("DELETE FROM sessions WHERE id_hash = ?").run(idHash);
     return null;
   }
   if (now - row.last_seen > 60_000) db().prepare("UPDATE sessions SET last_seen = ? WHERE id_hash = ?").run(now, idHash);
-  return { userId: row.user_id, mfaPending: row.mfa_pending === 1, idHash };
+  return { userId: row.user_id, mfaPending: row.mfa_pending === 1, idHash, kind: row.kind };
 }
 
-export async function completeMfa(idHash: string) {
-  db().prepare("UPDATE sessions SET mfa_pending = 0 WHERE id_hash = ?").run(idHash);
+export async function completeMfa(idHash: string, kind: SessionKind) {
+  db()
+    .prepare("UPDATE sessions SET mfa_pending = 0, expires_at = ? WHERE id_hash = ?")
+    .run(Date.now() + TIMEOUTS[kind].absolute, idHash);
 }
 
 export interface AuthedUser {

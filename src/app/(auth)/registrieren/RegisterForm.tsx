@@ -45,7 +45,7 @@ export function RegisterForm() {
       <div className="center" style={{ marginBottom: 28 }}>
         <div className="brand-mark" style={{ width: 56, height: 56, borderRadius: 16, fontSize: 28, margin: "0 auto 18px" }}>✓</div>
         <h1 className="title">Konto erstellen</h1>
-        <p className="muted" style={{ margin: "8px 0 0" }}>In wenigen Minuten zur fertigen Steuererklärung.</p>
+        <p className="muted" style={{ margin: "8px 0 0" }}>In wenigen Minuten zu deinem Steuerausgleich.</p>
       </div>
       <form className="card card-lg stack" onSubmit={submit} noValidate>
         {error && <div className="notice notice-red small" role="alert">{error}</div>}

@@ -3,8 +3,8 @@ import { connection } from "next/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Steuerklar – Steuererklärung per Foto", template: "%s · Steuerklar" },
-  description: "Belege fotografieren, KI erkennt alle Werte, du prüfst und bekommst deine fertige Steuererklärung. Verschlüsselt und in Minuten.",
+  title: { default: "Steuerklar – Arbeitnehmerveranlagung per Foto", template: "%s · Steuerklar" },
+  description: "Steuerausgleich für Österreich: Belege fotografieren, KI erkennt alle Werte, du prüfst und weißt sofort, wie viel du zurückbekommst. Verschlüsselt und in Minuten.",
   applicationName: "Steuerklar",
   appleWebApp: { capable: true, title: "Steuerklar", statusBarStyle: "default" },
   formatDetection: { telephone: false },
@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Dynamisches Rendering erzwingen, damit jede Antwort einen frischen CSP-Nonce erhält.
   await connection();
   return (
-    <html lang="de">
+    <html lang="de-AT">
       <body>{children}</body>
     </html>
   );

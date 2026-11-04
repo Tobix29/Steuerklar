@@ -12,7 +12,7 @@ export const GET = route({ auth: true, rate: { name: "pdf", limit: 30, windowMs:
   return new Response(Buffer.from(bytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="Steuererklaerung-${year}-Ausfuellhilfe.pdf"`,
+      "Content-Disposition": `attachment; filename="Arbeitnehmerveranlagung-${year}-Ausfuellhilfe.pdf"`,
       "Cache-Control": "no-store",
     },
   });
