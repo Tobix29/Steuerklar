@@ -1,9 +1,10 @@
 "use client";
 import { useRef, useState } from "react";
-import { useToast } from "@/components/ui";
 import { erklaereBrief, eur, pruefeBescheid } from "@/lib/client/api";
 import { downscale } from "@/lib/client/image";
 import { POST_ARTEN, type Bescheid, type BescheidPruefung, type Post } from "@/lib/ai/finanzamt";
+import { ANTRAEGE, antragText, antragVorschlag, type AntragArt, type AntragInput } from "@/lib/tax/antraege";
+import { MoneyInput, NumberInput, useToast } from "@/components/ui";
 import { useCase } from "../CaseContext";
 
 const datumDe = (iso: string | null) => (iso ? iso.split("-").reverse().join(".") : "–");
@@ -217,6 +218,76 @@ function BriefKarte() {
   );
 }
 
+
+function AntragKarte() {
+  const { data, result } = useCase();
+  const [a, setA] = useState<AntragInput | null>(null);
+  const [text, setText] = useState("");
+  if (!data || !result) return null;
+  const waehle = (art: AntragArt) => {
+    const v = antragVorschlag(art, data, result);
+    setA(v);
+    setText(antragText(v, data));
+  };
+  const upd = (patch: Partial<AntragInput>) => {
+    if (!a) return;
+    const v = { ...a, ...patch };
+    setA(v);
+    setText(antragText(v, data));
+  };
+  return (
+    <section className="card card-lg stack" aria-labelledby="antrag-h">
+      <div>
+        <h2 id="antrag-h" className="title-2">📨 Antrag stellen</h2>
+        <p className="muted small" style={{ margin: "6px 0 0" }}>Fertige Anträge mit dem richtigen Paragraphen – Werte aus deinem Fall sind schon eingesetzt.</p>
+      </div>
+      <div className="field">
+        <label className="label" htmlFor="antrag-art">Was möchtest du beantragen?</label>
+        <select id="antrag-art" className="select" value={a?.art ?? ""} onChange={(e) => e.target.value && waehle(e.target.value as AntragArt)}>
+          <option value="">Bitte wählen …</option>
+          {(Object.keys(ANTRAEGE) as AntragArt[]).map((k) => <option key={k} value={k}>{ANTRAEGE[k].titel}</option>)}
+        </select>
+        {a && <span className="help">{ANTRAEGE[a.art].info}</span>}
+      </div>
+      {a && (
+        <div className="stack fade-in">
+          {a.art === "herabsetzung" && (
+            <div className="grid grid-2">
+              <div className="field"><span className="label">Bisherige Vorauszahlung (Jahr)</span><MoneyInput ariaLabel="Bisherige Vorauszahlung" value={a.betrag} onChange={(v) => upd({ betrag: v })} /></div>
+              <div className="field"><span className="label">Beantragt (laut Prognose)</span><MoneyInput ariaLabel="Beantragte Vorauszahlung" value={a.beantragt} onChange={(v) => upd({ beantragt: v })} /></div>
+            </div>
+          )}
+          {a.art === "zahlungserleichterung" && (
+            <div className="grid grid-2">
+              <div className="field"><span className="label">Offener Betrag</span><MoneyInput ariaLabel="Offener Betrag" value={a.betrag} onChange={(v) => upd({ betrag: v })} /></div>
+              <div className="field"><span className="label">Monatsraten (0 = Stundung)</span><NumberInput ariaLabel="Monatsraten" value={a.raten} max={24} onChange={(v) => upd({ raten: v })} /></div>
+            </div>
+          )}
+          {a.art === "rueckzahlung" && (
+            <div className="grid grid-2">
+              <div className="field"><span className="label">Guthaben</span><MoneyInput ariaLabel="Guthaben" value={a.betrag} onChange={(v) => upd({ betrag: v })} /></div>
+              <div className="field"><span className="label">IBAN</span><input className="input" aria-label="IBAN" autoComplete="off" value={a.iban} onChange={(e) => upd({ iban: e.target.value.slice(0, 40) })} /></div>
+            </div>
+          )}
+          {(a.art === "beschwerdefrist" || a.art === "erklaerungsfrist") && (
+            <div className="field" style={{ maxWidth: 260 }}>
+              <span className="label">{a.art === "beschwerdefrist" ? "Datum des Bescheids" : "Verlängern bis"}</span>
+              <input className="input" type="date" aria-label="Datum" value={a.datum} onChange={(e) => upd({ datum: e.target.value })} />
+            </div>
+          )}
+          {a.art !== "rueckzahlung" && (
+            <div className="field">
+              <span className="label">Begründung (optional)</span>
+              <textarea className="input" rows={3} aria-label="Begründung" value={a.begruendung} onChange={(e) => upd({ begruendung: e.target.value.slice(0, 2000) })} />
+            </div>
+          )}
+          <Entwurf title={`Entwurf: ${ANTRAEGE[a.art].titel}`} text={text} onChange={setText} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Finanzamt() {
   return (
     <div className="stack fade-in" style={{ "--gap": "28px" } as React.CSSProperties}>
@@ -229,6 +300,7 @@ export default function Finanzamt() {
       </header>
       <BescheidKarte />
       <BriefKarte />
+      <AntragKarte />
       <p className="tiny muted">
         Steuerklar ersetzt keine rechtliche Vertretung. Entwürfe vor dem Absenden lesen und an deine Situation anpassen. Vertretung vor dem Finanzamt, im Finanzstrafverfahren
         und bei Außenprüfungen ist Steuerberater:innen, Wirtschaftsprüfer:innen und Rechtsanwält:innen vorbehalten.

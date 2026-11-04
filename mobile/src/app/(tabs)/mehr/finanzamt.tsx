@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Platform, Share, Text, TextInput, View } from "react-native";
-import { Badge, Button, Card, Notice, Row, Screen, Section, Segmented, useTextStyles } from "~/components/ui";
+import { Badge, Button, Card, ChoiceRow, MoneyRow, Notice, NumberRow, Row, Screen, Section, Segmented, TextRow, useTextStyles } from "~/components/ui";
 import { removeLocalFile, uploadForm } from "~/lib/api";
 import { useCase } from "~/lib/case";
 import { pickDocument, type Source } from "~/lib/documents";
 import { eur } from "~/lib/format";
 import { radius, useColors } from "~/lib/theme";
+import { ANTRAEGE, antragText, antragVorschlag, type AntragArt, type AntragInput } from "@core/tax/antraege";
 import { POST_ARTEN, type Bescheid, type BescheidPruefung, type Post } from "@core/ai/finanzamt";
 
 const datumDe = (iso: string | null) => (iso ? iso.split("-").reverse().join(".") : "–");
@@ -228,6 +229,48 @@ function BriefKarte() {
   );
 }
 
+
+function AntragKarte() {
+  const { data, result } = useCase();
+  const [a, setA] = useState<AntragInput | null>(null);
+  const [text, setText] = useState("");
+  if (!data || !result) return null;
+  const upd = (patch: Partial<AntragInput>) => {
+    if (!a) return;
+    const v = { ...a, ...patch };
+    setA(v);
+    setText(antragText(v, data));
+  };
+  const arten = Object.keys(ANTRAEGE) as AntragArt[];
+  return (
+    <>
+      <Section title="📨 Antrag stellen" footer={a ? ANTRAEGE[a.art].info : "Fertige Anträge mit dem richtigen Paragraphen – Werte aus deinem Fall sind schon eingesetzt."}>
+        <ChoiceRow
+          label="Antrag"
+          value={(a?.art ?? "") as AntragArt}
+          options={arten.map((k) => ({ value: k, label: ANTRAEGE[k].titel }))}
+          onChange={(art) => {
+            const v = antragVorschlag(art, data, result);
+            setA(v);
+            setText(antragText(v, data));
+          }}
+        />
+        {a?.art === "herabsetzung" && <MoneyRow label="Bisherige Vorauszahlung" value={a.betrag} onChange={(v) => upd({ betrag: v })} />}
+        {a?.art === "herabsetzung" && <MoneyRow label="Beantragt (Prognose)" value={a.beantragt} onChange={(v) => upd({ beantragt: v })} />}
+        {a?.art === "zahlungserleichterung" && <MoneyRow label="Offener Betrag" value={a.betrag} onChange={(v) => upd({ betrag: v })} />}
+        {a?.art === "zahlungserleichterung" && <NumberRow label="Monatsraten" sublabel="0 = Stundung" value={a.raten} max={24} onChange={(v) => upd({ raten: v })} />}
+        {a?.art === "rueckzahlung" && <MoneyRow label="Guthaben" value={a.betrag} onChange={(v) => upd({ betrag: v })} />}
+        {a?.art === "rueckzahlung" && <TextRow label="IBAN" value={a.iban} autoCapitalize="characters" onChangeText={(v) => upd({ iban: v.slice(0, 40) })} />}
+        {(a?.art === "beschwerdefrist" || a?.art === "erklaerungsfrist") && (
+          <TextRow label={a.art === "beschwerdefrist" ? "Bescheid vom" : "Verlängern bis"} placeholder="JJJJ-MM-TT" value={a.datum} onChangeText={(v) => upd({ datum: v.slice(0, 10) })} />
+        )}
+        {a && a.art !== "rueckzahlung" && <TextRow label="Begründung" placeholder="optional" value={a.begruendung} multiline onChangeText={(v) => upd({ begruendung: v.slice(0, 2000) })} />}
+      </Section>
+      {a && <Entwurf title={`Entwurf: ${ANTRAEGE[a.art].titel}`} text={text} onChange={setText} />}
+    </>
+  );
+}
+
 export default function Finanzamt() {
   const t = useTextStyles();
   return (
@@ -235,6 +278,7 @@ export default function Finanzamt() {
       <Text style={t.muted}>Bescheide prüfen, Briefe verstehen, Antworten schreiben. Die Dokumente werden nur gelesen und nicht gespeichert.</Text>
       <BescheidKarte />
       <BriefKarte />
+      <AntragKarte />
       <Text style={[t.muted, { fontSize: 12 }]}>
         Steuerklar ersetzt keine rechtliche Vertretung. Entwürfe vor dem Absenden lesen und anpassen. Vertretung vor dem Finanzamt, im Finanzstrafverfahren und bei Außenprüfungen
         ist Steuerberater:innen, Wirtschaftsprüfer:innen und Rechtsanwält:innen vorbehalten.
