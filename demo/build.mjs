@@ -44,7 +44,10 @@ await build({
 });
 
 // pdf.js-Worker als eigene Datei veröffentlichen (Module Worker aus eigener Datei sind im Artifact erlaubt)
-writeFileSync(path.join(out, "pdf.worker.min.mjs"), readFileSync(path.join(root, "node_modules", "pdfjs-dist", "build", "pdf.worker.min.mjs")));
+// Rohe Steuerzeichen (z. B. ESC) durch gleichwertige Escape-Sequenzen ersetzen – sie stehen nur in String-/Regex-Literalen.
+const escapeControl = (src) => src.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"));
+writeFileSync(path.join(out, "pdf.worker.min.mjs"), escapeControl(readFileSync(path.join(root, "node_modules", "pdfjs-dist", "build", "pdf.worker.min.mjs"), "utf8")));
+writeFileSync(path.join(out, "app.js"), escapeControl(readFileSync(path.join(out, "app.js"), "utf8")));
 
 // Stylesheet der Web-App + Ergänzungen für den Artifact-Viewer (expliziter Dark-Mode-Schalter, Demo-Banner).
 const css = readFileSync(path.join(root, "src", "app", "globals.css"), "utf8");
