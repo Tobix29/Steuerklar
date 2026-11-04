@@ -57,6 +57,10 @@ export function caseContext(c: TaxCase, r: TaxResult): string {
     unterhaltKinder: c.unterhaltKinder.map((k) => ({ monate: k.months })),
     kapital: c.kapital,
     kapitalOption: r.kapitalOption,
+    vermietung: c.mietobjekte.map((o) => ({ einnahmen: o.einnahmen, anschaffungskosten: o.anschaffungskosten, anschaffungsjahr: o.anschaffungsjahr, zinsen: o.zinsen })),
+    betriebe: c.betriebe.map((b) => ({ art: b.art, einnahmen: b.einnahmen, gewinnermittlung: b.gewinnermittlung })),
+    weitereEinkuenfte: r.weitereEinkuenfte.filter((l) => l.label.startsWith("Einkünfte")).map((l) => ({ posten: l.label, betrag: l.amount })),
+    veranlagungsfreibetrag: r.veranlagungsfreibetrag,
     ergebnis: {
       gutschrift: r.erstattung,
       einkommen: r.einkommen,

@@ -38,7 +38,7 @@ export default function Ergebnis() {
   const { result: r, year, data } = useCase();
   const [confirmed, setConfirmed] = useState(false);
   if (!r || !data) return <div className="shimmer" style={{ height: 400, borderRadius: 18 }} />;
-  const hasIncome = r.laufendeBezuege > 0;
+  const hasIncome = r.laufendeBezuege > 0 || r.weitereEinkuenfte.length > 0;
   const spar = hasIncome ? insights(data, r) : null;
   const maxEffect = Math.max(1, ...(spar?.contributions.map((c) => c.effect) ?? [1]));
 
@@ -47,7 +47,7 @@ export default function Ergebnis() {
       <header className="app-header">
         <div>
           <p className="eyebrow">Schritt 3</p>
-          <h1 className="title">Deine Arbeitnehmerveranlagung {year}</h1>
+          <h1 className="title">{r.e1Erforderlich ? "Deine Einkommensteuererklärung" : "Deine Arbeitnehmerveranlagung"} {year}</h1>
         </div>
       </header>
 
@@ -95,7 +95,11 @@ export default function Ergebnis() {
 
       <section className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>
         <h2 className="title-2">So trägst du es in FinanzOnline ein</h2>
-        <p className="muted small" style={{ margin: 0 }}>FinanzOnline → Eingaben → Erklärungen → Arbeitnehmerveranlagung (L1). Den Lohnzettel hat das Finanzamt bereits.</p>
+        <p className="muted small" style={{ margin: 0 }}>
+          {r.e1Erforderlich
+            ? "FinanzOnline → Eingaben → Erklärungen → Einkommensteuererklärung (E1) mit den Beilagen E1a/E1b. Den Lohnzettel hat das Finanzamt bereits."
+            : "FinanzOnline → Eingaben → Erklärungen → Arbeitnehmerveranlagung (L1). Den Lohnzettel hat das Finanzamt bereits."}
+        </p>
         <div className="list">
           {r.formular.length === 0 && <div className="list-item muted">Keine zusätzlichen Eintragungen nötig – Pauschalen werden automatisch berücksichtigt.</div>}
           {r.formular.map((f, i) => (
@@ -125,6 +129,19 @@ export default function Ergebnis() {
           <Item label="Einkünfte aus nichtselbständiger Arbeit" value={eur(r.einkuenfte)} strong />
         </div>
       </section>
+
+      {r.weitereEinkuenfte.length > 0 && (
+        <section>
+          <p className="section-label">Weitere Einkünfte (E1)</p>
+          <div className="list">
+            {r.weitereEinkuenfte.map((l, i) => (
+              <Item key={i} label={l.label} value={eur(l.amount)} hint={l.hint} strong={l.label.startsWith("Einkünfte")} />
+            ))}
+            {r.veranlagungsfreibetrag > 0 && <Item label="Veranlagungsfreibetrag (Nebeneinkünfte bis 730 €)" value={`− ${eur(r.veranlagungsfreibetrag)}`} />}
+            <Item label="Gesamtbetrag der Einkünfte" value={eur(r.gesamtbetragDerEinkuenfte)} strong />
+          </div>
+        </section>
+      )}
 
       <section>
         <p className="section-label">Vom Einkommen zur Steuer</p>

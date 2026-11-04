@@ -10,7 +10,8 @@
  * Nicht abgedeckt (→ Hinweis): Selbständige, Vermietung, Kapitalerträge, Pensionen,
  * Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Verlustvorträge, Jahressechstel-Überschreitung.
  */
-import { AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
+import { betrieb, vermietung, veranlagungsfreibetrag } from "./einkuenfte";
+import { VERANLAGUNGSFREIBETRAG, AGB_PAUSCHALEN, BEHINDERUNG_PAUSCHBETRAG, SELBSTBEHALT, SONSTIGE_BEZUEGE, UNVERIFIED_GLOBAL, WK_KATEGORIEN, YEAR_PARAMS, type TaxYear, type YearParams } from "./constants";
 import type { FormEntry, Line, TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -174,6 +175,37 @@ export function calculate(input: TaxCase): TaxResult {
   const wkSumme = cents(ohneAnrechnung + Math.max(sonstigeWk, pauschale));
   const einkuenfte = cents(laufend - wkSumme);
 
+  /* ---- Weitere Einkünfte: Vermietung (E1b), Selbständig/Gewerbe (E1a) ---- */
+  const weitere: Line[] = [];
+  let vvSumme = 0;
+  for (const o of input.mietobjekte) {
+    const r = vermietung(o, year);
+    vvSumme += r.ergebnis;
+    weitere.push(...r.lines, { label: `Einkünfte aus Vermietung ${o.bezeichnung || ""}`.trim(), amount: r.ergebnis });
+  }
+  vvSumme = cents(vvSumme);
+  let betriebSumme = 0;
+  for (const b of input.betriebe) {
+    const r = betrieb(b, p);
+    betriebSumme += r.gewinn;
+    hinweise.push(...r.hinweise);
+    weitere.push(...r.lines, { label: `Einkünfte aus ${b.art === "gewerbe" ? "Gewerbebetrieb" : "selbständiger Arbeit"}`, amount: r.gewinn });
+  }
+  betriebSumme = cents(betriebSumme);
+  if (input.mietobjekte.length) formular.push({ formular: "E1b", kz: "—", label: "Beilage E1b je Objekt (Einnahmen, AfA, Werbungskosten)", value: `€ ${eur(vvSumme)}` });
+  if (input.betriebe.length) formular.push({ formular: "E1a", kz: "—", label: "Beilage E1a je Betrieb (Gewinnermittlung)", value: `€ ${eur(betriebSumme)}` });
+  const neben = cents(vvSumme + betriebSumme);
+  const vfb = hasEmployment || hasPension ? veranlagungsfreibetrag(neben, VERANLAGUNGSFREIBETRAG) : 0;
+  if (vfb > 0) hinweise.push(`Deine Nebeneinkünfte (${eur(neben)} €) sind ${vfb >= neben ? "zur Gänze" : "teilweise"} steuerfrei (Veranlagungsfreibetrag bis 730 €).`);
+  const gde = cents(einkuenfte + neben - vfb);
+  const e1 = input.mietobjekte.length > 0 || input.betriebe.length > 0;
+  if (neben > VERANLAGUNGSFREIBETRAG && (hasEmployment || hasPension))
+    pflicht.push("Nebeneinkünfte über 730 € – du musst eine Einkommensteuererklärung (E1) abgeben (Frist: 30. April, elektronisch 30. Juni des Folgejahres).");
+  if (e1)
+    hinweise.push("Mit Vermietung oder selbständigen Einkünften gibst du statt L1 die Einkommensteuererklärung E1 ab. Werbungskosten, Sonderausgaben und Familienbonus trägst du dort ein – die Kennzahlen können vom L1 abweichen.");
+  if (e1 && !hasEmployment && !hasPension && neben > 0)
+    pflicht.push("Ohne Lohnzettel besteht ab einem Einkommen über der Steuergrenze die Pflicht zur Einkommensteuererklärung (E1).");
+
   /* ---- Sonderausgaben ---- */
   const sa: Line[] = [];
   if (input.kirchenbeitrag > 0) {
@@ -181,7 +213,7 @@ export function calculate(input: TaxCase): TaxResult {
   }
   const spenden = sum(input.spenden);
   if (spenden > 0) {
-    const cap = cents(Math.max(0, einkuenfte) * 0.1);
+    const cap = cents(Math.max(0, gde) * 0.1);
     sa.push({ label: "Spenden", amount: Math.min(spenden, cap), hint: spenden > cap ? "max. 10 % des Gesamtbetrags der Einkünfte" : "wird von der Organisation automatisch übermittelt" });
   }
   const stb = sum(input.steuerberatung);
@@ -190,7 +222,7 @@ export function calculate(input: TaxCase): TaxResult {
     formular.push({ formular: "L1", kz: "460", label: "Steuerberatungskosten", value: `€ ${eur(stb)}` });
   }
   const saSumme = sum(sa);
-  const einkommenVorAgb = cents(einkuenfte - saSumme);
+  const einkommenVorAgb = cents(gde - saSumme);
 
   /* ---- Außergewöhnliche Belastungen ---- */
   const kids = input.children.filter((c) => c.months > 0);
@@ -287,12 +319,21 @@ export function calculate(input: TaxCase): TaxResult {
       if (pabErhoeht) form.push({ formular: "L1", kz: "—", label: "Erhöhten Pensionistenabsetzbetrag beantragen", value: "ja" });
     }
 
-    // Pendlereuro und Unterhaltsabsetzbetrag wirken nur bis 0; VAB/Zuschlag/PAB können über die SV-Rückerstattung zu einer Gutschrift führen.
-    steuer = cents(Math.max(0, steuer - pendlereuro - uab) - vab - zuschlag - pab);
+    // Teuerungsabsetzbetrag 2022 (Zuschlag zu VAB bzw. PAB), linear eingeschliffen
+    let teuerung = 0;
+    if (p.teuerung && (hasEmployment || hasPension)) {
+      const t = p.teuerung;
+      const [basisT, from, to] = hasEmployment ? [eink, t.from, t.to] : [pensionsEinkuenfte, t.pensionFrom, t.pensionTo];
+      teuerung = basisT <= from ? t.amount : basisT >= to ? 0 : cents((t.amount * (to - basisT)) / (to - from));
+      if (teuerung > 0) abs.push({ label: "Teuerungsabsetzbetrag 2022", amount: teuerung, hint: "für niedrige Einkommen" });
+    }
+
+    // Pendlereuro und Unterhaltsabsetzbetrag wirken nur bis 0; VAB/Zuschlag/PAB/Teuerung können über die SV-Rückerstattung zu einer Gutschrift führen.
+    steuer = cents(Math.max(0, steuer - pendlereuro - uab) - vab - zuschlag - pab - teuerung);
     if (steuer < 0) {
       let svRe = 0;
       if (hasEmployment) {
-        const cap = (pendlerAnspruch ? p.svRueckerstattung.maxPendler : p.svRueckerstattung.max) + zuschlag;
+        const cap = (pendlerAnspruch ? p.svRueckerstattung.maxPendler : p.svRueckerstattung.max) + (p.svRueckerstattung.inklZuschlag ? 0 : zuschlag);
         svRe = cents(Math.min(-steuer, sv * p.svRueckerstattung.rate, cap));
         if (svRe > 0) neg.push({ label: "SV-Rückerstattung", amount: svRe, hint: `${p.svRueckerstattung.rate * 100} % der SV-Beiträge` });
       } else if (hasPension) {
@@ -359,7 +400,7 @@ export function calculate(input: TaxCase): TaxResult {
   if (lz.length > 1) pflicht.push("Mehrere Lohnzettel im selben Zeitraum – die Arbeitnehmerveranlagung ist dann meist verpflichtend (Frist: 30. September des Folgejahres).");
   if (lz.some((x) => x.kz718 > 0) && Math.abs(lz.reduce((a, x) => a + x.kz718, 0) - pp) > 1)
     pflicht.push("Die vom Arbeitgeber berücksichtigte Pendlerpauschale weicht vom zustehenden Betrag ab – bei zu hohem Betrag besteht Pflicht zur Veranlagung.");
-  if (!hasEmployment && !hasPension) hinweise.push("Lade deinen Lohnzettel (L16) hoch – du findest ihn in FinanzOnline unter „Abfragen“.");
+  if (!hasEmployment && !hasPension && !e1) hinweise.push("Lade deinen Lohnzettel (L16) hoch – du findest ihn in FinanzOnline unter „Abfragen“.");
   if (input.spenden.length || input.kirchenbeitrag > 0) hinweise.push("Spenden und Kirchenbeitrag werden automatisch an das Finanzamt übermittelt – bitte nicht zusätzlich eintragen.");
   if (erstattung > 0 && pflicht.length === 0 && hasEmployment)
     hinweise.push("Gibst du keine Erklärung ab, kann die antragslose Arbeitnehmerveranlagung greifen – Werbungskosten und Familienbonus werden dann aber nicht berücksichtigt.");
@@ -374,6 +415,10 @@ export function calculate(input: TaxCase): TaxResult {
     werbungskosten: wk,
     werbungskostenSumme: wkSumme,
     einkuenfte,
+    weitereEinkuenfte: weitere,
+    veranlagungsfreibetrag: vfb,
+    gesamtbetragDerEinkuenfte: gde,
+    e1Erforderlich: e1,
     sonderausgaben: sa,
     sonderausgabenSumme: saSumme,
     aussergewoehnlicheBelastungen: agb,

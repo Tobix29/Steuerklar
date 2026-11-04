@@ -5,6 +5,7 @@ import { AGB_PAUSCHALEN, BUNDESLAENDER, WK_KATEGORIEN, YEAR_PARAMS, type WkKateg
 import { behinderungPauschbetrag, pendlerpauschale } from "@/lib/tax/calculate";
 import type { Expense, TaxCase } from "@/lib/tax/types";
 import { useCase } from "../CaseContext";
+import { WeitereEinkuenfte } from "./WeitereEinkuenfte";
 
 type ListKey = "spenden" | "krankheitskosten" | "steuerberatung" | "werbungskosten";
 
@@ -287,6 +288,8 @@ export default function Profil() {
         </div>
         <p className="tiny muted" style={{ margin: "8px 0 0 16px" }}>Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück. Steuerklar rechnet automatisch, ob es sich lohnt.</p>
       </section>
+
+      <WeitereEinkuenfte data={data} set={set} year={year} />
 
       <section className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
         <div>

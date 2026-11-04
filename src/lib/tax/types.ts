@@ -42,6 +42,50 @@ export const ExpenseSchema = z.object({
 });
 export type Expense = z.infer<typeof ExpenseSchema>;
 
+/** Vermietetes Objekt (Beilage E1b). */
+export const MietobjektSchema = z.object({
+  id: z.string().max(64),
+  bezeichnung: z.string().max(200).default(""),
+  /** Mieteinnahmen netto (ohne USt) inkl. weiterverrechneter Betriebskosten */
+  einnahmen: optMoney,
+  /** Anschaffungs-/Herstellungskosten inkl. Grund */
+  anschaffungskosten: optMoney,
+  /** Anteil Grund und Boden in % (pauschal 20/30/40 % laut GrundanteilVO, oder Gutachten) */
+  grundanteil: z.number().min(0).max(100).default(20),
+  anschaffungsjahr: z.number().int().min(1900).max(2100).default(2020),
+  anschaffungsmonat: z.number().int().min(1).max(12).default(1),
+  /** Wohngebäude, fertiggestellt 2024–2026 (dreifache AfA in den ersten drei Jahren) */
+  neubau2024bis2026: z.boolean().default(false),
+  /** Manuelle Jahres-AfA (z. B. aus dem Vorjahresbescheid) – überschreibt die Berechnung, wenn > 0 */
+  afaManuell: optMoney,
+  zinsen: optMoney,
+  instandhaltung: optMoney,
+  /** Instandsetzungen, die auf 15 Jahre verteilt werden */
+  instandsetzungen: z.array(z.object({ id: z.string().max(64), jahr: z.number().int().min(1990).max(2100), betrag: money })).max(30).default([]),
+  betriebskosten: optMoney,
+  sonstigeWerbungskosten: optMoney,
+});
+export type Mietobjekt = z.infer<typeof MietobjektSchema>;
+
+/** Selbständige Arbeit oder Gewerbebetrieb (Beilage E1a). */
+export const BetriebSchema = z.object({
+  id: z.string().max(64),
+  bezeichnung: z.string().max(200).default(""),
+  art: z.enum(["selbstaendig", "gewerbe"]).default("selbstaendig"),
+  /** Betriebseinnahmen netto (ohne USt) */
+  einnahmen: optMoney,
+  gewinnermittlung: z.enum(["ear", "basis", "klein"]).default("ear"),
+  /** Tatsächliche Betriebsausgaben (ohne Sozialversicherung) – bei Einnahmen-Ausgaben-Rechnung */
+  ausgaben: optMoney,
+  /** Bezahlte SVS-Beiträge (immer zusätzlich abziehbar) */
+  sozialversicherung: optMoney,
+  /** Basispauschalierung: Tätigkeit mit reduziertem Satz (z. B. Beratung, Vortrag, Schriftsteller) */
+  reduzierterSatz: z.boolean().default(false),
+  /** Kleinunternehmerpauschalierung: Dienstleistungsbetrieb (20 % statt 45 %) */
+  dienstleistung: z.boolean().default(false),
+});
+export type Betrieb = z.infer<typeof BetriebSchema>;
+
 export const ChildSchema = z.object({
   id: z.string().max(64),
   firstName: z.string().max(100).default(""),
@@ -98,6 +142,8 @@ export const TaxCaseSchema = z.object({
     .array(z.object({ id: z.string().max(64), firstName: z.string().max(100).default(""), months: z.number().int().min(0).max(12).default(12) }))
     .max(15)
     .default([]),
+  mietobjekte: z.array(MietobjektSchema).max(20).default([]),
+  betriebe: z.array(BetriebSchema).max(10).default([]),
   /** Pension: Antrag auf erhöhten Pensionistenabsetzbetrag (Ehe/Partnerschaft, geringe Partnereinkünfte) */
   pensionErhoeht: z.boolean().default(false),
   /** Kapitalerträge mit Sondersteuersatz und bereits einbehaltene KESt (für die Regelbesteuerungsoption) */
@@ -125,7 +171,7 @@ export interface Line {
 }
 
 export interface FormEntry {
-  formular: "L1" | "L1k" | "E1kv";
+  formular: "L1" | "L1k" | "E1" | "E1a" | "E1b" | "E1kv";
   kz: string;
   label: string;
   value: string;
@@ -141,6 +187,14 @@ export interface TaxResult {
   werbungskosten: Line[];
   werbungskostenSumme: number;
   einkuenfte: number;
+  /** Einkünfte aus Vermietung (E1b) und selbständiger/gewerblicher Tätigkeit (E1a) */
+  weitereEinkuenfte: Line[];
+  /** Freibetrag für Nebeneinkünfte bis 730 € (§41 Abs 3 EStG) */
+  veranlagungsfreibetrag: number;
+  /** Gesamtbetrag der Einkünfte */
+  gesamtbetragDerEinkuenfte: number;
+  /** Statt L1 ist die Einkommensteuererklärung E1 abzugeben */
+  e1Erforderlich: boolean;
   sonderausgaben: Line[];
   sonderausgabenSumme: number;
   aussergewoehnlicheBelastungen: Line[];

@@ -1,0 +1,94 @@
+/**
+ * Weitere Einkunftsarten für die Einkommensteuererklärung E1:
+ *  - Vermietung und Verpachtung (Beilage E1b): Überschuss der Einnahmen über die Werbungskosten
+ *  - Selbständige Arbeit / Gewerbebetrieb (Beilage E1a): Gewinn aus Einnahmen-Ausgaben-Rechnung oder Pauschalierung
+ */
+import { VERMIETUNG, type YearParams } from "./constants";
+import type { Betrieb, Line, Mietobjekt } from "./types";
+
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+/** Jahres-AfA eines Gebäudes inkl. beschleunigter AfA (§8 Abs 1a, §16 Abs 1 Z 8 lit d EStG). */
+export function gebaeudeAfa(o: Mietobjekt, year: number): { afa: number; satz: number; hinweis?: string } {
+  if (o.afaManuell > 0) return { afa: cents(o.afaManuell), satz: 0, hinweis: "manuell" };
+  const basis = o.anschaffungskosten * (1 - o.grundanteil / 100);
+  if (basis <= 0) return { afa: 0, satz: 0 };
+  const jahrIndex = year - o.anschaffungsjahr + 1; // 1 = Jahr der Anschaffung
+  if (jahrIndex < 1) return { afa: 0, satz: 0, hinweis: "Anschaffung nach dem Veranlagungsjahr" };
+  const base = VERMIETUNG.afa;
+  const beschleunigt =
+    o.anschaffungsjahr > VERMIETUNG.beschleunigtAb.jahr ||
+    (o.anschaffungsjahr === VERMIETUNG.beschleunigtAb.jahr && o.anschaffungsmonat >= VERMIETUNG.beschleunigtAb.monat);
+  let satz = base;
+  let hinweis: string | undefined;
+  if (o.neubau2024bis2026 && jahrIndex <= 3) {
+    satz = base * VERMIETUNG.neubauFaktor;
+    hinweis = "dreifache AfA für Neubau (fertiggestellt 2024–2026)";
+  } else if (beschleunigt && jahrIndex === 1) {
+    satz = base * 3;
+    hinweis = "beschleunigte AfA (1. Jahr)";
+  } else if (beschleunigt && jahrIndex === 2) {
+    satz = base * 2;
+    hinweis = "beschleunigte AfA (2. Jahr)";
+  } else if (!beschleunigt && jahrIndex === 1 && o.anschaffungsmonat > 6) {
+    satz = base / 2;
+    hinweis = "Halbjahres-AfA";
+  }
+  // AfA endet, wenn die Bemessungsgrundlage verbraucht ist (vereinfacht: max. Restwert)
+  return { afa: cents(Math.min(basis * satz, basis)), satz, hinweis };
+}
+
+export function vermietung(o: Mietobjekt, year: number): { ergebnis: number; lines: Line[] } {
+  const lines: Line[] = [];
+  const afa = gebaeudeAfa(o, year);
+  const inst = o.instandsetzungen
+    .filter((i) => year >= i.jahr && year < i.jahr + VERMIETUNG.instandsetzungJahre)
+    .reduce((a, i) => a + i.betrag / VERMIETUNG.instandsetzungJahre, 0);
+  const wk: [string, number, string?][] = [
+    ["AfA Gebäude", afa.afa, afa.satz ? `${(afa.satz * 100).toLocaleString("de-AT")} %${afa.hinweis ? ` – ${afa.hinweis}` : ""}` : afa.hinweis],
+    ["Fremdfinanzierungszinsen", o.zinsen],
+    ["Instandhaltung", o.instandhaltung],
+    ["Instandsetzung (1/15)", cents(inst)],
+    ["Betriebskosten", o.betriebskosten],
+    ["Sonstige Werbungskosten", o.sonstigeWerbungskosten],
+  ];
+  const wkSumme = cents(wk.reduce((a, [, v]) => a + v, 0));
+  const ergebnis = cents(o.einnahmen - wkSumme);
+  lines.push({ label: `Vermietung ${o.bezeichnung || "Objekt"}: Einnahmen`, amount: o.einnahmen });
+  for (const [label, amount, hint] of wk) if (amount > 0) lines.push({ label: `– ${label}`, amount: -amount, hint });
+  return { ergebnis, lines };
+}
+
+export function betrieb(b: Betrieb, p: YearParams): { gewinn: number; lines: Line[]; hinweise: string[] } {
+  const hinweise: string[] = [];
+  const lines: Line[] = [{ label: `${b.art === "gewerbe" ? "Gewerbebetrieb" : "Selbständige Arbeit"} ${b.bezeichnung}: Betriebseinnahmen`.replace(/\s+:/, ":"), amount: b.einnahmen }];
+  let ausgaben = b.ausgaben;
+  let methode = "Einnahmen-Ausgaben-Rechnung";
+  if (b.gewinnermittlung === "basis") {
+    if (b.einnahmen > p.basispauschalierung.umsatzgrenze)
+      hinweise.push(`Basispauschalierung nur bis ${p.basispauschalierung.umsatzgrenze.toLocaleString("de-AT")} € Umsatz möglich.`);
+    const rate = b.reduzierterSatz ? p.basispauschalierung.reduziert : p.basispauschalierung.rate;
+    ausgaben = cents(b.einnahmen * rate);
+    methode = `Basispauschalierung ${(rate * 100).toLocaleString("de-AT")} %`;
+  } else if (b.gewinnermittlung === "klein") {
+    if (b.einnahmen > p.kleinunternehmerGrenze)
+      hinweise.push(`Kleinunternehmerpauschalierung nur bis ${p.kleinunternehmerGrenze.toLocaleString("de-AT")} € Umsatz möglich.`);
+    const rate = b.dienstleistung ? 0.2 : 0.45;
+    ausgaben = cents(Math.min(b.einnahmen, p.kleinunternehmerGrenze) * rate);
+    methode = `Kleinunternehmerpauschalierung ${rate * 100} %`;
+  }
+  lines.push({ label: `– Betriebsausgaben (${methode})`, amount: -ausgaben });
+  if (b.sozialversicherung > 0) lines.push({ label: "– Sozialversicherung (SVS)", amount: -b.sozialversicherung });
+  const vorGfb = cents(b.einnahmen - ausgaben - b.sozialversicherung);
+  const gfb = vorGfb > 0 ? cents(Math.min(vorGfb, p.gewinnfreibetrag.bis) * p.gewinnfreibetrag.rate) : 0;
+  if (gfb > 0) lines.push({ label: "– Gewinnfreibetrag (Grundfreibetrag)", amount: -gfb, hint: `${p.gewinnfreibetrag.rate * 100} % bis ${p.gewinnfreibetrag.bis.toLocaleString("de-AT")} € Gewinn` });
+  return { gewinn: cents(vorGfb - gfb), lines, hinweise };
+}
+
+/** Freibetrag für Nebeneinkünfte bis 730 €, eingeschliffen bis 1.460 € (§41 Abs 3 EStG). */
+export function veranlagungsfreibetrag(neben: number, grenze: number): number {
+  if (neben <= 0) return 0;
+  if (neben <= grenze) return cents(neben);
+  if (neben < 2 * grenze) return cents(2 * grenze - neben);
+  return 0;
+}

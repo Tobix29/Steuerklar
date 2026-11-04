@@ -94,7 +94,7 @@ export async function buildPdf(c: TaxCase, r: TaxResult): Promise<Uint8Array> {
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const w = new Writer(doc, font, bold, `Steuerklar · Arbeitnehmerveranlagung ${c.year} · erstellt am ${new Date().toLocaleDateString("de-AT")}`);
 
-  w.h1(`Arbeitnehmerveranlagung ${c.year}`);
+  w.h1(r.e1Erforderlich ? `Einkommensteuererklärung ${c.year}` : `Arbeitnehmerveranlagung ${c.year}`);
   w.text(
     "Diese Ausfüllhilfe fasst deine Angaben und die erkannten Belegwerte zusammen und ordnet sie den Kennzahlen der Formulare L1 " +
       "und L1k in FinanzOnline zu. Die Daten deines Lohnzettels (L16) liegen dem Finanzamt bereits vor und müssen nicht eingetragen werden. " +
@@ -130,6 +130,13 @@ export async function buildPdf(c: TaxCase, r: TaxResult): Promise<Uint8Array> {
   for (const l of r.werbungskosten) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { ref: l.kz ? `KZ ${l.kz}` : undefined });
   w.row("Summe Werbungskosten", eur(r.werbungskostenSumme), { strong: true });
   for (const x of c.werbungskosten) w.row(`Beleg: ${x.label}`, eur(x.amount));
+
+  if (r.weitereEinkuenfte.length) {
+    w.h2("Weitere Einkünfte", "Einkommensteuererklärung E1 mit Beilage E1b (Vermietung) bzw. E1a (Selbständig/Gewerbe)");
+    for (const l of r.weitereEinkuenfte) w.row(l.hint ? `${l.label} (${l.hint})` : l.label, eur(l.amount), { strong: l.label.startsWith("Einkünfte") });
+    if (r.veranlagungsfreibetrag) w.row("Veranlagungsfreibetrag", `− ${eur(r.veranlagungsfreibetrag)}`);
+    w.row("Gesamtbetrag der Einkünfte", eur(r.gesamtbetragDerEinkuenfte), { strong: true });
+  }
 
   if (r.sonderausgaben.length) {
     w.h2("Sonderausgaben");

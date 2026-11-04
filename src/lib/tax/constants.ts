@@ -46,7 +46,7 @@ export interface YearParams {
   avab: { oneChild: number; twoChildren: number; perFurtherChild: number };
   avabPartnerIncomeLimit: number;
   /** SV-Rückerstattung: Anteil der SV-Beiträge und Höchstbeträge */
-  svRueckerstattung: { rate: number; max: number; maxPendler: number };
+  svRueckerstattung: { rate: number; max: number; maxPendler: number; /** Höchstbetrag enthält bereits den Zuschlag (2022) */ inklZuschlag?: boolean };
   kirchenbeitragMax: number;
   telearbeit: { perDay: number; maxDays: number };
   mobiliarMax: number;
@@ -63,6 +63,14 @@ export interface YearParams {
   };
   /** Unterhaltsabsetzbetrag je Monat: 1. Kind, 2. Kind, jedes weitere */
   uab: [number, number, number];
+  /** Gewinnfreibetrag (Grundfreibetrag): Anteil und Gewinngrenze */
+  gewinnfreibetrag: { rate: number; bis: number };
+  /** Basispauschalierung: Satz, reduzierter Satz, Umsatzgrenze */
+  basispauschalierung: { rate: number; reduziert: number; umsatzgrenze: number };
+  /** Kleinunternehmerpauschalierung: Umsatzgrenze */
+  kleinunternehmerGrenze: number;
+  /** Teuerungsabsetzbetrag (nur 2022) */
+  teuerung?: { amount: number; from: number; to: number; pensionFrom: number; pensionTo: number };
 }
 
 const PENDLER_KLEIN = { from20: 696, from40: 1356, from60: 2016 };
@@ -98,12 +106,15 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 0.75, svMax: 300 },
     uab: [29.2, 43.8, 58.4],
+    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
+    kleinunternehmerGrenze: 35000,
   },
   2022: {
     year: 2022,
     // 2022: Tarifsenkung auf 32,5 % (Mischsatz), Familienbonus rückwirkend erhöht, Pendlerpauschale/-euro ab Mai erhöht,
     // Teuerungsabsetzbetrag (bis 500 €) ist NICHT abgebildet.
-    unverified: ["svRueckerstattung", "pendlerFaktor", "pendlereuroPerKm", "teuerungsabsetzbetrag fehlt", "pension"],
+    unverified: ["svRueckerstattung.maxPendler", "pendlerFaktor", "pendlereuroPerKm", "pension.from/to"],
     brackets: [
       { upTo: 11000, rate: 0 },
       { upTo: 18000, rate: 0.2 },
@@ -124,13 +135,19 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     kindermehrbetrag: 550,
     avab: { oneChild: 494, twoChildren: 669, perFurtherChild: 220 },
     avabPartnerIncomeLimit: 6000,
-    svRueckerstattung: { rate: 0.55, max: 400, maxPendler: 500 },
+    // Teuerungs-Entlastungspaket: 70 % der SV-Beiträge, max. 1.550 € (inkl. Zuschlag)
+    svRueckerstattung: { rate: 0.7, max: 1550, maxPendler: 1550, inklZuschlag: true },
     kirchenbeitragMax: 400,
     telearbeit: { perDay: 3, maxDays: 100 },
     mobiliarMax: 300,
     pendlerFaktor: 4 / 12 + (8 / 12) * 1.5,
-    pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 0.75, svMax: 550 },
+    // 2022: SV-Rückerstattung Pensionist:innen 100 %, max. 1.050 € (Teuerungs-Entlastungspaket)
+    pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 1, svMax: 1050 },
     uab: [29.2, 43.8, 58.4],
+    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
+    kleinunternehmerGrenze: 35000,
+    teuerung: { amount: 500, from: 18200, to: 24500, pensionFrom: 20500, pensionTo: 25500 },
   },
   2023: {
     year: 2023,
@@ -162,10 +179,13 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: (6 / 12) * 1.5 + 6 / 12,
     pension: { pab: 868, from: 18410, pabErhoeht: 1278, fromErhoeht: 20967, to: 26826, partnerLimit: 2315, svRate: 0.8, svMax: 579 },
     uab: [31, 47, 62],
+    gewinnfreibetrag: { rate: 0.15, bis: 30000 },
+    basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
+    kleinunternehmerGrenze: 35000,
   },
   2024: {
     year: 2024,
-    unverified: ["vabZuschlag", "svRueckerstattung.maxPendler", "avabPartnerIncomeLimit", "pension.from/to", "pension.partnerLimit", "pension.svMax"],
+    unverified: ["vabZuschlag", "svRueckerstattung.maxPendler", "avabPartnerIncomeLimit"],
     brackets: [
       { upTo: 12816, rate: 0 },
       { upTo: 20818, rate: 0.2 },
@@ -190,8 +210,11 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     telearbeit: { perDay: 3, maxDays: 100 },
     mobiliarMax: 300,
     pendlerFaktor: 1,
-    pension: { pab: 954, from: 20459, pabErhoeht: 1405, fromErhoeht: 23301, to: 29812, partnerLimit: 2545, svRate: 0.8, svMax: 618 },
+    pension: { pab: 954, from: 20233, pabErhoeht: 1405, fromErhoeht: 23043, to: 29482, partnerLimit: 2545, svRate: 0.8, svMax: 618 },
     uab: [35, 52, 69],
+    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    basispauschalierung: { rate: 0.12, reduziert: 0.06, umsatzgrenze: 220000 },
+    kleinunternehmerGrenze: 35000,
   },
   2025: {
     year: 2025,
@@ -222,6 +245,9 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 1002, from: 21245, pabErhoeht: 1476, fromErhoeht: 24196, to: 30957, partnerLimit: 2674, svRate: 0.8, svMax: 711 },
     uab: [37, 55, 73],
+    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    basispauschalierung: { rate: 0.135, reduziert: 0.0675, umsatzgrenze: 320000 },
+    kleinunternehmerGrenze: 55000,
   },
   2026: {
     year: 2026,
@@ -253,6 +279,9 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     pendlerFaktor: 1,
     pension: { pab: 1020, from: 21614, pabErhoeht: 1502, fromErhoeht: 24616, to: 31494, partnerLimit: 2720, svRate: 0.8, svMax: 723 },
     uab: [38, 56, 75],
+    gewinnfreibetrag: { rate: 0.15, bis: 33000 },
+    basispauschalierung: { rate: 0.15, reduziert: 0.075, umsatzgrenze: 420000 },
+    kleinunternehmerGrenze: 55000,
   },
 };
 
@@ -287,8 +316,21 @@ export const AGB_PAUSCHALEN = {
   auswaertigeAusbildungMonat: 110,
 };
 
+/** Vermietung: AfA-Sätze für Gebäude (§16 Abs 1 Z 8 EStG) */
+export const VERMIETUNG = {
+  afa: 0.015,
+  /** Beschleunigte AfA für Anschaffung/Herstellung nach dem 30.6.2020: 1. Jahr 3-fach, 2. Jahr 2-fach */
+  beschleunigtAb: { jahr: 2020, monat: 7 },
+  /** Wohngebäude, fertiggestellt 2024–2026: 3-facher Satz in den ersten drei Jahren */
+  neubauFaktor: 3,
+  instandsetzungJahre: 15,
+};
+
+/** Veranlagungsfreibetrag für Nebeneinkünfte (§41 Abs 3 EStG), eingeschliffen bis zum Doppelten */
+export const VERANLAGUNGSFREIBETRAG = 730;
+
 /** Stammt nicht aus Primärquellen geprüft – vor Produktivbetrieb verifizieren (gilt jahresübergreifend). */
-export const UNVERIFIED_GLOBAL = ["AGB_PAUSCHALEN.kfzBehinderungMonat", "AGB_PAUSCHALEN.auswaertigeAusbildungMonat"];
+export const UNVERIFIED_GLOBAL = ["AGB_PAUSCHALEN.kfzBehinderungMonat", "AGB_PAUSCHALEN.auswaertigeAusbildungMonat", "VERMIETUNG.neubauFaktor", "basispauschalierung 2025/2026", "kleinunternehmerGrenze 2021–2024"];
 
 /** Selbstbehalt bei außergewöhnlichen Belastungen (§34 Abs 4 EStG) */
 export const SELBSTBEHALT = [
