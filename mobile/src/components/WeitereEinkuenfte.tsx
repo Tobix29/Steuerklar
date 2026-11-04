@@ -7,6 +7,7 @@ import { useColors } from "~/lib/theme";
 import { gwgGrenze } from "@core/tax/constants";
 import { YEAR_PARAMS, type Betrieb, type Mietobjekt, type TaxCase, type TaxYear } from "~/lib/types";
 import { anlageAfa, betrieb, gebaeudeAfa, vermietung } from "@core/tax/einkuenfte";
+import { mitJournal } from "@core/tax/journal";
 
 const neuesObjekt = (year: number): Mietobjekt => ({
   id: uid(), bezeichnung: "", einnahmen: 0, anschaffungskosten: 0, grundanteil: 20, anschaffungsjahr: year - 5, anschaffungsmonat: 1,
@@ -14,7 +15,7 @@ const neuesObjekt = (year: number): Mietobjekt => ({
 });
 
 const neuerBetrieb = (): Betrieb => ({
-  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0, anlagen: [],
+  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0, anlagen: [], buchungen: [],
 });
 
 /** Vermietung (E1b) und Selbständig/Gewerbe (E1a) inkl. Instandsetzungen und Umsatzsteuer. */
@@ -81,7 +82,9 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
       })}
 
       {data.betriebe.map((b, i) => {
-        const r = betrieb(b, p);
+        const journal = b.buchungen.length > 0;
+        const eff = journal ? mitJournal(data).betriebe[i]! : b;
+        const r = betrieb(eff, p);
         const upd = (fn: (x: Betrieb) => void) => set((d) => fn(d.betriebe[i]!));
         return (
           <Fragment key={b.id}>
@@ -90,7 +93,13 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
             <View style={{ padding: 12 }}>
               <Segmented value={b.art} onChange={(v) => upd((x) => void (x.art = v))} options={[{ value: "selbstaendig", label: "Selbständig" }, { value: "gewerbe", label: "Gewerbe" }]} />
             </View>
-            <MoneyRow label="Betriebseinnahmen" sublabel="netto ohne USt" value={b.einnahmen} onChange={(v) => upd((x) => void (x.einnahmen = v))} />
+            <Row
+              label="📒 Buchhaltung"
+              sublabel={journal ? `${b.buchungen.length} Buchung(en) – Summen kommen aus dem Journal` : "Belege laufend fotografieren statt Summen eintragen"}
+              chevron
+              onPress={() => router.push("/mehr/buchhaltung")}
+            />
+            {!journal && <MoneyRow label="Betriebseinnahmen" sublabel="netto ohne USt" value={b.einnahmen} onChange={(v) => upd((x) => void (x.einnahmen = v))} />}
             <ChoiceRow
               label="Gewinnermittlung"
               value={b.gewinnermittlung}
@@ -101,20 +110,20 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                 { value: "klein", label: `Kleinunternehmerpauschalierung (bis ${eur(p.kleinunternehmerGrenze, 0)})` },
               ]}
             />
-            {b.gewinnermittlung === "ear" && <MoneyRow label="Betriebsausgaben" sublabel="ohne Sozialversicherung" value={b.ausgaben} onChange={(v) => upd((x) => void (x.ausgaben = v))} />}
+            {b.gewinnermittlung === "ear" && !journal && <MoneyRow label="Betriebsausgaben" sublabel="ohne Sozialversicherung" value={b.ausgaben} onChange={(v) => upd((x) => void (x.ausgaben = v))} />}
             {b.gewinnermittlung === "basis" && (
               <SwitchRow label="Beratung, Vortrag, Schriftsteller" sublabel={`reduzierter Satz ${(p.basispauschalierung.reduziert * 100).toLocaleString("de-DE")} %`} value={b.reduzierterSatz} onValueChange={(v) => upd((x) => void (x.reduzierterSatz = v))} />
             )}
             {b.gewinnermittlung === "klein" && (
               <SwitchRow label="Dienstleistungsbetrieb" sublabel="20 % statt 45 % Pauschale" value={b.dienstleistung} onValueChange={(v) => upd((x) => void (x.dienstleistung = v))} />
             )}
-            <MoneyRow label="SVS-Beiträge" sublabel="immer zusätzlich absetzbar" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
+            {!journal && <MoneyRow label="SVS-Beiträge" sublabel="immer zusätzlich absetzbar" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />}
             <View style={{ padding: 12, gap: 8 }}>
               <Text style={{ color: c.text, fontSize: 15 }}>Umsatzsteuer-Satz</Text>
               <Segmented value={b.ustSatz} onChange={(v) => upd((x) => void (x.ustSatz = v))} options={[{ value: 20, label: "20 %" }, { value: 13, label: "13 %" }, { value: 10, label: "10 %" }, { value: 0, label: "frei" }]} />
             </View>
-            <MoneyRow label="Vorsteuer" sublabel="nur ohne Kleinunternehmerbefreiung" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
-            {b.gewinnermittlung === "ear" && b.einnahmen - b.ausgaben - b.sozialversicherung > p.gewinnfreibetrag.bis && (
+            {!journal && <MoneyRow label="Vorsteuer" sublabel="nur ohne Kleinunternehmerbefreiung" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />}
+            {b.gewinnermittlung === "ear" && eff.einnahmen - eff.ausgaben - eff.sozialversicherung > p.gewinnfreibetrag.bis && (
               <MoneyRow
                 label="Begünstigte Investitionen"
                 sublabel={`für den investitionsbedingten Gewinnfreibetrag (Gewinn über ${eur(p.gewinnfreibetrag.bis, 0)})`}
