@@ -1,7 +1,7 @@
 import QRCode from "qrcode";
 import { z } from "zod";
 import { audit, checkCredentials, revokeAllSessions, createSession, requestKind } from "@/lib/server/auth";
-import { db } from "@/lib/server/db";
+import { q } from "@/lib/server/db";
 import { HttpError, json, parseJson, route } from "@/lib/server/guard";
 import { decryptJson, encryptJson, newTotpSecret, verifyTotp } from "@/lib/security/crypto";
 
@@ -21,9 +21,7 @@ export const POST = route({ auth: true, rate: { name: "totp", limit: 20, windowM
   if (body.action === "enable") {
     const counter = verifyTotp(body.secret, body.code, null);
     if (counter === null) throw new HttpError(400, "Der Code passt nicht. Prüfe die Uhrzeit deines Geräts.");
-    db()
-      .prepare("UPDATE users SET totp_secret_enc = ?, totp_last_counter = ? WHERE id = ?")
-      .run(encryptJson(user.dek, body.secret, `totp:${user.userId}`), counter, user.userId);
+    await q.run("UPDATE users SET totp_secret_enc = ?, totp_last_counter = ? WHERE id = ?", encryptJson(user.dek, body.secret, `totp:${user.userId}`), counter, user.userId);
     await audit(user.userId, "mfa_enabled");
     // Alle Sitzungen beenden und für dieses Gerät eine neue ausstellen
     await revokeAllSessions(user.userId);
@@ -33,14 +31,14 @@ export const POST = route({ auth: true, rate: { name: "totp", limit: 20, windowM
   }
   const cred = await checkCredentials(user.email, body.password);
   if (!cred.ok) throw new HttpError(401, "Passwort ist falsch.");
-  const row = db().prepare("SELECT totp_secret_enc, totp_last_counter FROM users WHERE id = ?").get(user.userId) as {
+  const row = await q.get("SELECT totp_secret_enc, totp_last_counter FROM users WHERE id = ?", user.userId) as {
     totp_secret_enc: string | null;
     totp_last_counter: number | null;
   };
   if (!row.totp_secret_enc) throw new HttpError(400, "Zwei-Faktor-Anmeldung ist nicht aktiv.");
   const secret = decryptJson<string>(user.dek, row.totp_secret_enc, `totp:${user.userId}`);
   if (verifyTotp(secret, body.code, row.totp_last_counter) === null) throw new HttpError(401, "Der Code ist ungültig.");
-  db().prepare("UPDATE users SET totp_secret_enc = NULL, totp_last_counter = NULL WHERE id = ?").run(user.userId);
+  await q.run("UPDATE users SET totp_secret_enc = NULL, totp_last_counter = NULL WHERE id = ?", user.userId);
   await audit(user.userId, "mfa_disabled");
   return json({ ok: true });
 });

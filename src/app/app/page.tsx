@@ -4,7 +4,7 @@ import { eur } from "@/lib/client/api";
 import { useCase } from "./CaseContext";
 
 export default function Overview() {
-  const { data, result, year, documentCount, error } = useCase();
+  const { data, result, year, documentCount, error, storagePersistent } = useCase();
   if (error && !data) return <div className="notice notice-red">{error}</div>;
   if (!data || !result) return <Skeleton />;
 
@@ -34,6 +34,13 @@ export default function Overview() {
           <h1 className="title">{hasProfile ? `Servus ${data.firstName}.` : "Willkommen bei Steuerklar."}</h1>
         </div>
       </header>
+
+      {!storagePersistent && (
+        <div className="notice notice-orange small">
+          <span>🧪</span>
+          <span><strong>Vorschau ohne Datenbank:</strong> Deine Eingaben werden nicht dauerhaft gespeichert. Für den echten Betrieb eine Postgres-Datenbank verbinden.</span>
+        </div>
+      )}
 
       <section className="card card-lg center">
         <p className="muted small" style={{ margin: 0 }}>{refund >= 0 ? "Voraussichtliche Gutschrift" : "Voraussichtliche Nachforderung"}</p>

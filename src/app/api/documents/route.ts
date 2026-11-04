@@ -5,14 +5,17 @@ import { HttpError, json, route } from "@/lib/server/guard";
 import { listDocuments, parseYear, saveDocument, type StoredDocument } from "@/lib/server/repo";
 import { MAX_UPLOAD_BYTES, normalizeUpload, safeFileName } from "@/lib/server/upload";
 
+/** KI-Erkennung kann bei mehrseitigen PDFs länger dauern. */
+export const maxDuration = 120;
+
 export const GET = route({ auth: true }, async ({ req, user }) => {
   const year = parseYear(new URL(req.url).searchParams.get("year"));
-  return json({ documents: listDocuments(user, year), aiEnabled: aiEnabled() });
+  return json({ documents: await listDocuments(user, year), aiEnabled: aiEnabled() });
 });
 
 export const POST = route({ auth: true, rate: { name: "upload", limit: 40, windowMs: 60 * 60_000 } }, async ({ req, user }) => {
   const len = Number(req.headers.get("content-length") ?? 0);
-  if (len > MAX_UPLOAD_BYTES + 64 * 1024) throw new HttpError(413, "Die Datei ist größer als 10 MB.");
+  if (len > MAX_UPLOAD_BYTES + 64 * 1024) throw new HttpError(413, `Die Datei ist größer als ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`);
   if (!req.headers.get("content-type")?.startsWith("multipart/form-data")) throw new HttpError(415, "Upload erwartet.");
   const form = await req.formData();
   const file = form.get("file");
@@ -44,7 +47,7 @@ export const POST = route({ auth: true, rate: { name: "upload", limit: 40, windo
   };
   if (extraction.taxYear && extraction.taxYear !== year)
     doc.extraction.warnings.push(`Der Beleg scheint aus ${extraction.taxYear} zu stammen, nicht aus ${year}.`);
-  saveDocument(user, doc);
+  await saveDocument(user, doc);
   await audit(user.userId, "document_uploaded");
   return json({ document: doc }, 201);
 });

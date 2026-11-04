@@ -12,6 +12,7 @@ interface Ctx {
   data: TaxCase | null;
   result: TaxResult | null;
   documentCount: number;
+  storagePersistent: boolean;
   saveState: SaveState;
   error: string | null;
   update: (fn: (draft: TaxCase) => void) => void;
@@ -31,6 +32,7 @@ export function CaseProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<TaxCase | null>(null);
   const [result, setResult] = useState<TaxResult | null>(null);
   const [documentCount, setDocumentCount] = useState(0);
+  const [storagePersistent, setStoragePersistent] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,10 +47,11 @@ export function CaseProvider({ children }: { children: React.ReactNode }) {
 
   const reload = useCallback(async () => {
     try {
-      const r = await api<{ case: TaxCase; result: TaxResult; documents: number }>(`/api/case?year=${year}`);
+      const r = await api<{ case: TaxCase; result: TaxResult; documents: number; storagePersistent: boolean }>(`/api/case?year=${year}`);
       setData(r.case);
       setResult(r.result);
       setDocumentCount(r.documents);
+      setStoragePersistent(r.storagePersistent);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Laden fehlgeschlagen.");
@@ -101,6 +104,6 @@ export function CaseProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <CaseCtx.Provider value={{ year, setYear, data, result, documentCount, saveState, error, update, reload }}>{children}</CaseCtx.Provider>
+    <CaseCtx.Provider value={{ year, setYear, data, result, documentCount, storagePersistent, saveState, error, update, reload }}>{children}</CaseCtx.Provider>
   );
 }

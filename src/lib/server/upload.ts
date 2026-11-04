@@ -3,7 +3,8 @@ import sharp from "sharp";
 import type { ExtractInput } from "@/lib/ai/extract";
 import { HttpError } from "./guard";
 
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/** Vercel begrenzt Request-Bodies auf 4,5 MB; lokal sind 10 MB erlaubt. Bilder werden im Browser vorab verkleinert. */
+export const MAX_UPLOAD_BYTES = (process.env.VERCEL ? 4 : 10) * 1024 * 1024;
 
 type Detected = "jpeg" | "png" | "webp" | "heic" | "pdf" | null;
 
@@ -26,7 +27,7 @@ export function sniff(buf: Buffer): Detected {
  */
 export async function normalizeUpload(file: File): Promise<{ input: ExtractInput; kind: "image" | "pdf"; bytes: number }> {
   if (file.size === 0) throw new HttpError(400, "Die Datei ist leer.");
-  if (file.size > MAX_UPLOAD_BYTES) throw new HttpError(413, "Die Datei ist größer als 10 MB.");
+  if (file.size > MAX_UPLOAD_BYTES) throw new HttpError(413, `Die Datei ist größer als ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`);
   const buf = Buffer.from(await file.arrayBuffer());
   const type = sniff(buf);
   if (!type) throw new HttpError(415, "Nur JPEG, PNG, WebP, HEIC oder PDF werden unterstützt.");

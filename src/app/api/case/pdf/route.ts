@@ -6,7 +6,7 @@ import { loadCase, parseYear } from "@/lib/server/repo";
 
 export const GET = route({ auth: true, rate: { name: "pdf", limit: 30, windowMs: 60 * 60_000 } }, async ({ req, user }) => {
   const year = parseYear(new URL(req.url).searchParams.get("year"));
-  const data = loadCase(user, year);
+  const data = await loadCase(user, year);
   const bytes = await buildPdf(data, calculate(data));
   await audit(user.userId, "pdf_generated");
   return new Response(Buffer.from(bytes), {

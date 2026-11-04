@@ -4,5 +4,5 @@ import { loadCase, parseYear } from "@/lib/server/repo";
 
 export const GET = route({ auth: true }, async ({ req, user }) => {
   const year = parseYear(new URL(req.url).searchParams.get("year"));
-  return json(calculate(loadCase(user, year)));
+  return json(calculate(await loadCase(user, year)));
 });

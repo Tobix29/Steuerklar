@@ -3,7 +3,7 @@ import { hash, verify } from "@node-rs/argon2";
 import { cookies, headers } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { blindIndex, encryptJson, decryptJson, newWrappedDataKey, randomToken, sha256, unwrapDataKey } from "@/lib/security/crypto";
-import { db } from "./db";
+import { q } from "./db";
 
 export const SESSION_COOKIE = "__Host-sk_session";
 export type SessionKind = "web" | "mobile";
@@ -36,7 +36,7 @@ interface UserRow {
 
 export async function registerUser(email: string, password: string): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const idx = blindIndex(email);
-  const exists = db().prepare("SELECT 1 FROM users WHERE email_idx = ?").get(idx);
+  const exists = await q.get("SELECT 1 FROM users WHERE email_idx = ?", idx);
   if (exists) {
     // Gleiche Antwortzeit wie bei Erfolg, keine Aussage ob Konto existiert.
     await hashPassword(password);
@@ -45,16 +45,14 @@ export async function registerUser(email: string, password: string): Promise<{ o
   const id = randomUUID();
   const dekWrapped = newWrappedDataKey(id);
   const dek = unwrapDataKey(dekWrapped, id);
-  db()
-    .prepare("INSERT INTO users (id, email_idx, email_enc, password_hash, dek, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run(id, idx, encryptJson(dek, email.trim(), `email:${id}`), await hashPassword(password), dekWrapped, Date.now());
+  await q.run("INSERT INTO users (id, email_idx, email_enc, password_hash, dek, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, idx, encryptJson(dek, email.trim(), `email:${id}`), await hashPassword(password), dekWrapped, Date.now());
   await audit(id, "register");
   return { ok: true, userId: id };
 }
 
 export async function checkCredentials(email: string, password: string): Promise<{ ok: true; user: UserRow } | { ok: false; error: string }> {
   const generic = "E-Mail oder Passwort ist falsch.";
-  const row = db().prepare("SELECT * FROM users WHERE email_idx = ?").get(blindIndex(email)) as UserRow | undefined;
+  const row = await q.get("SELECT * FROM users WHERE email_idx = ?", blindIndex(email)) as UserRow | undefined;
   if (!row) {
     dummyHash ??= await hashPassword(randomToken());
     await verify(dummyHash, password).catch(() => false);
@@ -66,13 +64,11 @@ export async function checkCredentials(email: string, password: string): Promise
   const valid = await verify(row.password_hash, password).catch(() => false);
   if (!valid) {
     const failed = row.failed_logins + 1;
-    db()
-      .prepare("UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?")
-      .run(failed >= MAX_FAILED_LOGINS ? 0 : failed, failed >= MAX_FAILED_LOGINS ? Date.now() + LOCK_MS : 0, row.id);
+    await q.run("UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?", failed >= MAX_FAILED_LOGINS ? 0 : failed, failed >= MAX_FAILED_LOGINS ? Date.now() + LOCK_MS : 0, row.id);
     await audit(row.id, failed >= MAX_FAILED_LOGINS ? "login_locked" : "login_failed");
     return { ok: false, error: generic };
   }
-  db().prepare("UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?").run(row.id);
+  await q.run("UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?", row.id);
   return { ok: true, user: row };
 }
 
@@ -86,13 +82,9 @@ export async function createSession(userId: string, mfaPending: boolean, kind: S
   const token = randomToken(32);
   const now = Date.now();
   const t = TIMEOUTS[kind];
-  db()
-    .prepare("INSERT INTO sessions (id_hash, user_id, created_at, last_seen, expires_at, mfa_pending, kind) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(sha256(token), userId, now, now, now + (mfaPending ? 10 * 60 * 1000 : t.absolute), mfaPending ? 1 : 0, kind);
+  await q.run("INSERT INTO sessions (id_hash, user_id, created_at, last_seen, expires_at, mfa_pending, kind) VALUES (?, ?, ?, ?, ?, ?, ?)", sha256(token), userId, now, now, now + (mfaPending ? 10 * 60 * 1000 : t.absolute), mfaPending ? 1 : 0, kind);
   // Abgelaufene Sessions aufräumen
-  db()
-    .prepare("DELETE FROM sessions WHERE expires_at < ? OR (kind = 'web' AND last_seen < ?) OR (kind = 'mobile' AND last_seen < ?)")
-    .run(now, now - TIMEOUTS.web.idle, now - TIMEOUTS.mobile.idle);
+  await q.run("DELETE FROM sessions WHERE expires_at < ? OR (kind = 'web' AND last_seen < ?) OR (kind = 'mobile' AND last_seen < ?)", now, now - TIMEOUTS.web.idle, now - TIMEOUTS.mobile.idle);
   if (kind === "web") {
     const jar = await cookies();
     jar.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "strict", path: "/", maxAge: t.absolute / 1000 });
@@ -115,7 +107,7 @@ export async function requestKind(): Promise<SessionKind> {
 
 export async function destroySession() {
   const t = await readToken();
-  if (t) db().prepare("DELETE FROM sessions WHERE id_hash = ?").run(sha256(t.token));
+  if (t) await q.run("DELETE FROM sessions WHERE id_hash = ?", sha256(t.token));
   if (t?.kind !== "mobile") (await cookies()).delete(SESSION_COOKIE);
 }
 
@@ -130,24 +122,22 @@ export async function getSession(): Promise<SessionInfo | null> {
   const t = await readToken();
   if (!t || t.token.length > 100) return null;
   const idHash = sha256(t.token);
-  const row = db().prepare("SELECT user_id, last_seen, expires_at, mfa_pending, kind FROM sessions WHERE id_hash = ?").get(idHash) as
+  const row = await q.get("SELECT user_id, last_seen, expires_at, mfa_pending, kind FROM sessions WHERE id_hash = ?", idHash) as
     | { user_id: string; last_seen: number; expires_at: number; mfa_pending: number; kind: SessionKind }
     | undefined;
   // Ein Web-Token darf nicht als Bearer-Token verwendet werden und umgekehrt.
   if (!row || row.kind !== t.kind) return null;
   const now = Date.now();
   if (row.expires_at < now || row.last_seen + TIMEOUTS[row.kind].idle < now) {
-    db().prepare("DELETE FROM sessions WHERE id_hash = ?").run(idHash);
+    await q.run("DELETE FROM sessions WHERE id_hash = ?", idHash);
     return null;
   }
-  if (now - row.last_seen > 60_000) db().prepare("UPDATE sessions SET last_seen = ? WHERE id_hash = ?").run(now, idHash);
+  if (now - row.last_seen > 60_000) await q.run("UPDATE sessions SET last_seen = ? WHERE id_hash = ?", now, idHash);
   return { userId: row.user_id, mfaPending: row.mfa_pending === 1, idHash, kind: row.kind };
 }
 
 export async function completeMfa(idHash: string, kind: SessionKind) {
-  db()
-    .prepare("UPDATE sessions SET mfa_pending = 0, expires_at = ? WHERE id_hash = ?")
-    .run(Date.now() + TIMEOUTS[kind].absolute, idHash);
+  await q.run("UPDATE sessions SET mfa_pending = 0, expires_at = ? WHERE id_hash = ?", Date.now() + TIMEOUTS[kind].absolute, idHash);
 }
 
 export interface AuthedUser {
@@ -161,7 +151,7 @@ export interface AuthedUser {
 export async function currentUser(): Promise<AuthedUser | null> {
   const s = await getSession();
   if (!s || s.mfaPending) return null;
-  const row = db().prepare("SELECT id, dek, email_enc, totp_secret_enc FROM users WHERE id = ?").get(s.userId) as
+  const row = await q.get("SELECT id, dek, email_enc, totp_secret_enc FROM users WHERE id = ?", s.userId) as
     | { id: string; dek: string; email_enc: string; totp_secret_enc: string | null }
     | undefined;
   if (!row) return null;
@@ -170,14 +160,15 @@ export async function currentUser(): Promise<AuthedUser | null> {
 }
 
 export async function revokeAllSessions(userId: string) {
-  db().prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+  await q.run("DELETE FROM sessions WHERE user_id = ?", userId);
 }
 
 /* ---------- Audit-Log (ohne Klartext-IP, DSGVO-freundlich) ---------- */
 
 export async function clientIp(): Promise<string> {
   const h = await headers();
-  if (process.env.TRUST_PROXY === "1") {
+  // Auf Vercel setzt die Plattform X-Forwarded-For selbst (vertrauenswürdig).
+  if (process.env.TRUST_PROXY === "1" || process.env.VERCEL) {
     const fwd = h.get("x-forwarded-for")?.split(",")[0]?.trim();
     if (fwd) return fwd;
   }
@@ -186,7 +177,5 @@ export async function clientIp(): Promise<string> {
 
 export async function audit(userId: string | null, event: string) {
   const ip = await clientIp().catch(() => "unknown");
-  db()
-    .prepare("INSERT INTO audit_log (user_id, event, ip_hash, at) VALUES (?, ?, ?, ?)")
-    .run(userId, event, sha256(`${new Date().toISOString().slice(0, 10)}:${ip}`), Date.now());
+  await q.run("INSERT INTO audit_log (user_id, event, ip_hash, at) VALUES (?, ?, ?, ?)", userId, event, sha256(`${new Date().toISOString().slice(0, 10)}:${ip}`), Date.now());
 }

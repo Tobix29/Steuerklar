@@ -27,6 +27,24 @@ const emptyLz = (): LohnzettelFields => ({
   kz717: null, kz718: null, kz916: null, telearbeitstage: null, telearbeitspauschale: null,
 });
 
+/** Verkleinert Fotos im Browser (max. 2000 px, JPEG) – schneller, datensparsamer und unter dem Upload-Limit. */
+async function downscale(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.size < 600_000) return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.86));
+    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
+  } catch {
+    return file; // z. B. HEIC in Browsern ohne Unterstützung → Server versucht es
+  }
+}
+
 interface Upload { key: string; name: string; preview: string | null; status: "uploading" | "error"; error?: string }
 
 export default function Belege() {
@@ -58,7 +76,7 @@ export default function Belege() {
       setUploads((u) => [...u, { key, name: file.name, preview, status: "uploading" }]);
       try {
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", await downscale(file));
         fd.append("year", String(year));
         const r = await api<{ document: StoredDocument }>("/api/documents", { method: "POST", body: fd });
         setUploads((u) => u.filter((x) => x.key !== key));
@@ -125,7 +143,7 @@ export default function Belege() {
       >
         <div className="icon" aria-hidden="true">📄</div>
         <div className="title-2">Belege hierher ziehen</div>
-        <p className="muted small" style={{ margin: "6px 0 18px" }}>JPEG, PNG, HEIC oder PDF · max. 10 MB · Fotos werden nicht gespeichert</p>
+        <p className="muted small" style={{ margin: "6px 0 18px" }}>JPEG, PNG, HEIC oder PDF · Fotos werden nicht gespeichert</p>
         <div className="row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
           <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); camRef.current?.click(); }}>📸 Foto aufnehmen</button>
           <button type="button" className="btn btn-secondary" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}>Dateien wählen</button>

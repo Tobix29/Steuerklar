@@ -19,10 +19,10 @@ const PatchSchema = z.object({
 export const PATCH = route({ auth: true, rate: { name: "doc", limit: 200, windowMs: 60_000 } }, async ({ req, user }) => {
   const id = idFrom(req);
   const body = await parseJson(req, PatchSchema);
-  const doc = getDocument(user, id);
+  const doc = await getDocument(user, id);
   if (!doc) throw new HttpError(404, "Beleg nicht gefunden.");
   const year = parseYear(String(doc.year));
-  let data = loadCase(user, year);
+  let data = await loadCase(user, year);
 
   // Bisherige Buchung mit den alten Werten entfernen, bevor neue Werte übernommen werden.
   data = unapplyDocument(data, doc);
@@ -42,19 +42,19 @@ export const PATCH = route({ auth: true, rate: { name: "doc", limit: 200, window
     doc.applied = false;
     doc.appliedAmount = 0;
   }
-  saveCase(user, data);
-  saveDocument(user, doc);
+  await saveCase(user, data);
+  await saveDocument(user, doc);
   return json({ document: doc });
 });
 
 export const DELETE = route({ auth: true, rate: { name: "doc", limit: 200, windowMs: 60_000 } }, async ({ req, user }) => {
   const id = idFrom(req);
-  const doc = getDocument(user, id);
+  const doc = await getDocument(user, id);
   if (!doc) throw new HttpError(404, "Beleg nicht gefunden.");
   if (doc.applied) {
     const year = parseYear(String(doc.year));
-    saveCase(user, unapplyDocument(loadCase(user, year), doc));
+    await saveCase(user, unapplyDocument(await loadCase(user, year), doc));
   }
-  deleteDocumentRow(user, id);
+  await deleteDocumentRow(user, id);
   return json({ ok: true });
 });

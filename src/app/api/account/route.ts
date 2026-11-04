@@ -9,7 +9,7 @@ export const DELETE = route({ auth: true, rate: { name: "delete", limit: 5, wind
   const cred = await checkCredentials(user.email, password);
   if (!cred.ok) throw new HttpError(401, "Passwort ist falsch.");
   await audit(user.userId, "account_deleted");
-  deleteAccount(user.userId);
+  await deleteAccount(user.userId);
   await destroySession();
   return json({ ok: true });
 });
