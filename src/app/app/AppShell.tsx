@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/client/api";
-import { SUPPORTED_YEARS, type TaxYear } from "@/lib/tax/constants";
+import { fristen, SUPPORTED_YEARS, type TaxYear } from "@/lib/tax/constants";
 import { CaseProvider, useCase } from "./CaseContext";
 
 const NAV = [
@@ -18,10 +18,10 @@ function YearPicker() {
   const { year, setYear } = useCase();
   return (
     <select className="select year-picker" aria-label="Steuerjahr" value={year} onChange={(e) => setYear(Number(e.target.value) as TaxYear)}>
-      {SUPPORTED_YEARS.map((y) => (
+      {[...SUPPORTED_YEARS].reverse().filter((y) => !fristen(y).expired).map((y) => (
         <option key={y} value={y}>
           {y}
-          {y === 2026 ? " · Prognose" : ""}
+          {!fristen(y).yearEnded ? " · Prognose" : fristen(y).urgent ? " · Frist läuft ab" : ""}
         </option>
       ))}
     </select>

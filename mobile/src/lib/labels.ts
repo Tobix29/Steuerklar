@@ -19,6 +19,7 @@ export const WK_LABELS = {
   reisekosten: "Reisekosten",
   fortbildung: "Fortbildung",
   sonstige: "Sonstige",
+  gewerkschaft: "Gewerkschaftsbeiträge",
 } as const;
 export type WkKategorie = keyof typeof WK_LABELS;
 

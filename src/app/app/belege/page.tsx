@@ -7,6 +7,7 @@ import { WK_KATEGORIEN, type WkKategorie } from "@/lib/tax/constants";
 import { belegAmount } from "@/lib/tax/apply";
 import type { StoredDocument } from "@/lib/server/repo";
 import { useCase } from "../CaseContext";
+import { BankImport } from "./BankImport";
 
 const LZ_FIELDS: [keyof LohnzettelFields, string, string][] = [
   ["kz210", "Bruttobezüge", "210"],
@@ -23,7 +24,7 @@ const LZ_FIELDS: [keyof LohnzettelFields, string, string][] = [
 ];
 
 const emptyLz = (): LohnzettelFields => ({
-  arbeitgeber: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
+  arbeitgeber: null, istPension: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
   kz717: null, kz718: null, kz916: null, telearbeitstage: null, telearbeitspauschale: null,
 });
 
@@ -171,6 +172,8 @@ export default function Belege() {
         </div>
       )}
 
+      <BankImport onDone={(m) => toast.show(m)} />
+
       <section className="stack">
         <div className="row-between">
           <h2 className="title-2">Deine Belege</h2>
@@ -280,6 +283,11 @@ function DocumentCard({
                   <label>Arbeitgeber</label>
                   <input className="input" value={ex.lohnzettel.arbeitgeber ?? ""} disabled={ro} onChange={(e) => setEx((x) => ({ ...x, lohnzettel: { ...x.lohnzettel!, arbeitgeber: e.target.value } }))} />
                 </div>
+                <label className="row small" style={{ gridColumn: "1 / -1", cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!ex.lohnzettel.istPension} disabled={ro} style={{ width: 18, height: 18 }}
+                    onChange={(e) => setEx((x) => ({ ...x, lohnzettel: { ...x.lohnzettel!, istPension: e.target.checked } }))} />
+                  <span>Das ist ein Lohnzettel über meine <strong>Pension</strong></span>
+                </label>
                 <div className="field">
                   <label>Telearbeitstage</label>
                   {ro ? <div className="input num" style={{ textAlign: "right", background: "var(--surface-2)" }}>{ex.lohnzettel.telearbeitstage ?? 0}</div> : (

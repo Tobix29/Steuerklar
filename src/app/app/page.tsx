@@ -3,6 +3,7 @@ import Link from "next/link";
 import { eur } from "@/lib/client/api";
 import { insights } from "@/lib/tax/insights";
 import { useCase } from "./CaseContext";
+import { YearsOverview } from "./YearsOverview";
 
 export default function Overview() {
   const { data, result, year, documentCount, error, storagePersistent } = useCase();
@@ -57,6 +58,8 @@ export default function Overview() {
           {hasIncome && <Link className="btn btn-secondary" href="/app/ergebnis">Details ansehen</Link>}
         </div>
       </section>
+
+      <YearsOverview />
 
       <section className="stack">
         <div className="row-between">

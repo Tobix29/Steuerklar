@@ -230,13 +230,71 @@ export default function Profil() {
         )}
       </section>
 
+      <section className="stack" style={{ "--gap": "12px" } as React.CSSProperties}>
+        <div className="row-between">
+          <div>
+            <h2 className="title-2">Unterhalt</h2>
+            <p className="muted small" style={{ margin: "4px 0 0" }}>Für Kinder, die nicht bei dir wohnen und für die du gesetzlichen Unterhalt zahlst (Unterhaltsabsetzbetrag).</p>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.unterhaltKinder.push({ id: uid(), firstName: "", months: 12 }))}>+ Kind</button>
+        </div>
+        {data.unterhaltKinder.map((k, i) => (
+          <div key={k.id} className="list">
+            <Row label={`Kind ${i + 1}`} help={`${eur(p.uab[Math.min(i, 2)]!)} pro Monat`}>
+              <input className="input input-inline" aria-label="Vorname" placeholder="Vorname" value={k.firstName} onChange={(e) => set((d) => void (d.unterhaltKinder[i]!.firstName = e.target.value.slice(0, 100)))} />
+            </Row>
+            <Row label="Monate mit Unterhaltszahlung">
+              <NumberInput ariaLabel="Monate Unterhalt" value={k.months} max={12} suffix="Mon." onChange={(v) => set((d) => void (d.unterhaltKinder[i]!.months = v))} />
+            </Row>
+            <div className="list-item">
+              <button className="btn btn-ghost btn-sm" style={{ color: "var(--red)" }} onClick={() => set((d) => void d.unterhaltKinder.splice(i, 1))}>Entfernen</button>
+            </div>
+          </div>
+        ))}
+        {data.unterhaltKinder.length > 0 && <p className="tiny muted" style={{ margin: 0 }}>Tipp: Als unterhaltszahlender Elternteil kannst du zusätzlich den halben Familienbonus Plus beantragen – trage das Kind dafür auch unter „Kinder & Familie“ mit „Hälfte“ ein.</p>}
+      </section>
+
+      {data.lohnzettel.some((l) => l.art === "pension") && (
+        <section>
+          <p className="section-label">Pension</p>
+          <div className="list">
+            <Row label="Erhöhter Pensionistenabsetzbetrag" help={`Verheiratet bzw. eingetragene Partnerschaft, Partnereinkünfte bis ${eur(p.pension.partnerLimit, 0)} und kein Alleinverdienerabsetzbetrag`}>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <Toggle label="Erhöhter Pensionistenabsetzbetrag" checked={data.pensionErhoeht} onChange={(v) => set((d) => void (d.pensionErhoeht = v))} />
+              </div>
+            </Row>
+            {data.pensionErhoeht && (
+              <Row label="Einkünfte der Partnerin/des Partners">
+                <MoneyInput ariaLabel="Partnereinkünfte" value={data.partnerEinkuenfte} onChange={(v) => set((d) => void (d.partnerEinkuenfte = v))} />
+              </Row>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <p className="section-label">Kapitalerträge (Sparbuch, Depot)</p>
+        <div className="list">
+          <Row label="Erträge mit 27,5 % KESt" help="Dividenden, Fonds, Kursgewinne – steht im Steuerreport deiner Bank">
+            <MoneyInput ariaLabel="Erträge 27,5 %" value={data.kapital.ertraege275} onChange={(v) => set((d) => void (d.kapital.ertraege275 = v))} />
+          </Row>
+          <Row label="Zinsen mit 25 % KESt" help="Sparbuch, Festgeld, Girokonto">
+            <MoneyInput ariaLabel="Zinsen 25 %" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
+          </Row>
+          <Row label="Bereits abgezogene KESt">
+            <MoneyInput ariaLabel="KESt bezahlt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
+          </Row>
+        </div>
+        <p className="tiny muted" style={{ margin: "8px 0 0 16px" }}>Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück. Steuerklar rechnet automatisch, ob es sich lohnt.</p>
+      </section>
+
       <section className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
         <div>
           <h2 className="title-2">Sonderausgaben & Krankheitskosten</h2>
           <p className="muted small" style={{ margin: "4px 0 0" }}>Kirchenbeitrag und Spenden übermitteln Kirche und Organisationen automatisch – hier nur für die Berechnung.</p>
         </div>
         <div className="list">
-          <Row label="Kirchenbeitrag" help={`max. ${p.kirchenbeitragMax} € absetzbar`}>
+          <Row label="Kirchenbeitrag" help={`max. ${p.kirchenbeitragMax} € absetzbar (${year})`}>
             <MoneyInput ariaLabel="Kirchenbeitrag" value={data.kirchenbeitrag} onChange={(v) => set((d) => void (d.kirchenbeitrag = v))} />
           </Row>
         </div>

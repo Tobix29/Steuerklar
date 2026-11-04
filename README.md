@@ -26,9 +26,12 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 
 | Bereich | Datei(en) |
 |---|---|
-| Steuer-Engine Österreich (Tarif 2024–2026, Lohnzettel L16, Werbungskosten + Pauschale, Pendlerpauschale/-euro, Telearbeit, Sonderausgaben, Selbstbehalt §34, Familienbonus Plus, AVAB/AEAB, VAB + Zuschlag, SV-Rückerstattung, sonstige Bezüge §67) | `src/lib/tax/calculate.ts`, `constants.ts`, Tests in `calculate.test.ts` |
+| Steuer-Engine Österreich (Tarif 2021–2026 inkl. Sonderregeln 2022/2023, Pensionen & Pensionistenabsetzbetrag, Unterhaltsabsetzbetrag, Regelbesteuerungsoption Kapitalerträge, Behinderung, Fristen, Lohnzettel L16, Werbungskosten + Pauschale, Pendlerpauschale/-euro, Telearbeit, Sonderausgaben, Selbstbehalt §34, Familienbonus Plus, AVAB/AEAB, VAB + Zuschlag, SV-Rückerstattung, sonstige Bezüge §67) | `src/lib/tax/calculate.ts`, `constants.ts`, Tests in `calculate.test.ts` |
 | KI-Belegerkennung (Claude Vision + Structured Outputs, Plausibilisierung, keine SV-Nummern) | `src/lib/ai/extract.ts`, `schema.ts` |
 | Beleg → Erklärung (nur nach Bestätigung durch Nutzer:in) | `src/lib/tax/apply.ts` |
+| Spar-Check (Euro-Wirkung je Abzug, Tipps) | `src/lib/tax/insights.ts` |
+| KI-Steuerassistent (Chat) | `src/lib/ai/assistant.ts`, `src/app/api/assistant` |
+| Kontoauszug-Import (CSV → absetzbare Ausgaben) | `src/lib/ai/bank.ts`, `src/app/api/bank-import` |
 | Auth, Sessions (Web-Cookie / Mobile-Bearer-Token), 2FA, Audit-Log | `src/lib/server/auth.ts`, `src/lib/security/crypto.ts` |
 | API-Schutz (CSRF/Origin, Rate Limits, Validierung) | `src/lib/server/guard.ts` |
 | Upload-Härtung (Magic Bytes, Re-Encoding, EXIF-Entfernung) | `src/lib/server/upload.ts` |
@@ -54,8 +57,9 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 2. **Steuerwerte verifizieren:** In `src/lib/tax/constants.ts` listet `unverified` je Jahr die Werte, die nur aus Sekundärquellen stammen
    (u. a. Höchstbeträge der SV-Rückerstattung, Einschleifgrenzen des VAB-Zuschlags 2026, Partner-Einkommensgrenze AVAB). Zuordnung
    der L1-Kennzahlen (`WK_KATEGORIEN`, Formular-Einträge) gegen das aktuelle Formular L1 prüfen. Annahme prüfen: KZ 245 ist um KZ 718 gekürzt.
-3. **Vereinfachungen:** Kindermehrbetrag vereinfacht; nicht abgedeckt: Selbständige, Vermietung, Kapitalerträge, Pensionen,
-   Unterhaltsabsetzbetrag, Behinderung, doppelte Haushaltsführung, Jahressechstel-Überschreitung.
+3. **Vereinfachungen:** Kindermehrbetrag vereinfacht; 2022 ohne Teuerungsabsetzbetrag; Pensions-Einschleifgrenzen 2022/2024
+   und SV-Rückerstattung für Pensionist:innen geschätzt. Nicht abgedeckt: Selbständige und Vermietung (Formular E1),
+   Verlustausgleichsoption Kapital, Jahressechstel-Überschreitung, Auslandseinkünfte.
 4. **Übermittlung:** Eine direkte Abgabe in FinanzOnline durch Drittsoftware ist für Privatpersonen nicht vorgesehen – die App liefert
    eine Ausfüllhilfe mit Kennzahlen. Option: Kooperation mit Steuerberatungskanzlei (Vollmacht) für die Übermittlung.
 5. **Infrastruktur:** PostgreSQL in EU-Region, Master Key in KMS (mit Rotation), Rate Limiting über Redis, Pen-Test, Monitoring.

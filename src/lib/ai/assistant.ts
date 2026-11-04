@@ -52,6 +52,11 @@ export function caseContext(c: TaxCase, r: TaxResult): string {
     behinderungGrad: c.behinderungGrad,
     kinder: c.children.map((k) => ({ geburtsjahr: k.birthYear, monate: k.months, familienbonus: k.familienbonusShare === 1 ? "ganz" : "halb" })),
     familienstatus: c.familienstatus,
+    pension: c.lohnzettel.some((l) => l.art === "pension"),
+    pensionErhoehtBeantragt: c.pensionErhoeht,
+    unterhaltKinder: c.unterhaltKinder.map((k) => ({ monate: k.months })),
+    kapital: c.kapital,
+    kapitalOption: r.kapitalOption,
     ergebnis: {
       gutschrift: r.erstattung,
       einkommen: r.einkommen,

@@ -10,7 +10,7 @@ import { useColors } from "~/lib/theme";
 import type { DocumentType, Extraction, LohnzettelFields, StoredDocument } from "~/lib/types";
 
 const emptyLz = (): LohnzettelFields => ({
-  arbeitgeber: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
+  arbeitgeber: null, istPension: null, kz210: null, kz215: null, kz220: null, kz225: null, kz230: null, kz245: null, kz260: null,
   kz717: null, kz718: null, kz916: null, telearbeitstage: null, telearbeitspauschale: null,
 });
 

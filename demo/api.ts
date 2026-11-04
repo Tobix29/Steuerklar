@@ -12,6 +12,7 @@ import { TaxCaseSchema } from "@/lib/tax/types";
 import type { StoredDocument } from "@/lib/server/repo";
 import { store } from "./store";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
+import { BankResultSchema, bankInstructions, prepareCsv, type BankFinding } from "@/lib/ai/bank";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -90,6 +91,16 @@ async function handle(method: string, url: URL, body: unknown): Promise<unknown>
   if (path === "/api/account" && method === "DELETE") {
     await s.clear();
     return { ok: true };
+  }
+
+  if (path === "/api/years") {
+    const years = [];
+    for (const year of SUPPORTED_YEARS) {
+      const c = await s.getCase(year);
+      const hasData = c.lohnzettel.length > 0;
+      years.push({ year, hasData, documents: (await s.listDocs(year)).length, erstattung: hasData ? calculate(c).erstattung : null });
+    }
+    return { years };
   }
 
   if (path === "/api/case") {
@@ -226,5 +237,34 @@ export async function askAssistant(
     if (e?.code === "rate_limited") throw new ApiError(429, "Der Assistent ist gerade ausgelastet. Bitte versuch es in einer Minute noch einmal.");
     if (e?.text) return e.text;
     throw new ApiError(500, "Der Assistent ist gerade nicht erreichbar.");
+  }
+}
+
+/** Kontoauszug-Import in der Demo: Claude über die `sample`-Capability. */
+export async function scanBankStatement(csv: string, year: number): Promise<{ findings: BankFinding[]; hinweis: string | null }> {
+  const sample = await capability("sample");
+  if (!sample) throw new ApiError(503, "Der Kontoauszug-Import ist in dieser Ansicht nicht verfügbar. Öffne das Artifact direkt auf claude.ai und melde dich an.");
+  const limits = await sample.limits().catch(() => null);
+  const room = Math.max(5_000, (limits?.maxPromptBytes ?? 200_000) - 12_000);
+  const data = prepareCsv(csv).slice(0, room);
+  const prompt = `${bankInstructions(year)}
+
+Antworte ausschließlich mit einem JSON-Objekt nach diesem JSON-Schema (kein Markdown):
+${JSON.stringify(z.toJSONSchema(BankResultSchema))}
+
+<kontoauszug>
+${data}
+</kontoauszug>`;
+  try {
+    const out = await sample.json(prompt, { modelTier: "default", cache: false });
+    const parsed = BankResultSchema.safeParse(out);
+    if (!parsed.success) throw new ApiError(422, "Die Auswertung lieferte ungültige Daten.");
+    return { findings: parsed.data.findings.map((f) => ({ ...f, betrag: Math.abs(f.betrag) })), hinweis: parsed.data.hinweis };
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const code = (err as { code?: string })?.code;
+    if (code === "not_granted") throw new ApiError(403, "Du hast Claude für diese Seite nicht erlaubt.");
+    if (code === "rate_limited") throw new ApiError(429, "Die KI ist gerade ausgelastet. Bitte in einer Minute erneut versuchen.");
+    throw new ApiError(500, "Der Kontoauszug konnte nicht ausgewertet werden.");
   }
 }

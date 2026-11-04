@@ -8,6 +8,8 @@ const optMoney = money.default(0);
 export const LohnzettelSchema = z.object({
   id: z.string().max(64),
   arbeitgeber: z.string().max(200).default(""),
+  /** Aktivbezug (Dienstverhältnis) oder Pension */
+  art: z.enum(["aktiv", "pension"]).default("aktiv"),
   /** KZ 210: Bruttobezüge */
   kz210: optMoney,
   /** KZ 215: steuerfreie Bezüge */
@@ -91,6 +93,17 @@ export const TaxCaseSchema = z.object({
   krankheitskosten: z.array(ExpenseSchema).max(200).default([]),
 
   children: z.array(ChildSchema).max(15).default([]),
+  /** Kinder, für die gesetzlicher Unterhalt gezahlt wird (nicht im eigenen Haushalt) – Monate mit Unterhaltszahlung */
+  unterhaltKinder: z
+    .array(z.object({ id: z.string().max(64), firstName: z.string().max(100).default(""), months: z.number().int().min(0).max(12).default(12) }))
+    .max(15)
+    .default([]),
+  /** Pension: Antrag auf erhöhten Pensionistenabsetzbetrag (Ehe/Partnerschaft, geringe Partnereinkünfte) */
+  pensionErhoeht: z.boolean().default(false),
+  /** Kapitalerträge mit Sondersteuersatz und bereits einbehaltene KESt (für die Regelbesteuerungsoption) */
+  kapital: z
+    .object({ ertraege275: optMoney, ertraege25: optMoney, kestBezahlt: optMoney })
+    .default({ ertraege275: 0, ertraege25: 0, kestBezahlt: 0 }),
   familienstatus: z.enum(["keine", "alleinverdiener", "alleinerzieher"]).default("keine"),
   /** Einkünfte der Partnerin/des Partners (für den Alleinverdienerabsetzbetrag) */
   partnerEinkuenfte: optMoney,
@@ -112,7 +125,7 @@ export interface Line {
 }
 
 export interface FormEntry {
-  formular: "L1" | "L1k";
+  formular: "L1" | "L1k" | "E1kv";
   kz: string;
   label: string;
   value: string;
@@ -145,6 +158,8 @@ export interface TaxResult {
   grenzsteuersatz: number;
   durchschnittssteuersatz: number;
   formular: FormEntry[];
+  /** Ergebnis der Günstigerprüfung für Kapitalerträge */
+  kapitalOption: { empfohlen: boolean; erstattung: number; mehrsteuer: number } | null;
   hinweise: string[];
   pflichtveranlagung: string[];
 }

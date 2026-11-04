@@ -19,7 +19,8 @@ const wkKeys = Object.keys(WK_KATEGORIEN) as [WkKategorie, ...WkKategorie[]];
 const num = () => z.number().nullable();
 
 export const LohnzettelFieldsSchema = z.object({
-  arbeitgeber: z.string().nullable().describe("Name des Arbeitgebers"),
+  arbeitgeber: z.string().nullable().describe("Name des Arbeitgebers bzw. der pensionsauszahlenden Stelle"),
+  istPension: z.boolean().nullable().describe("true, wenn es ein Lohnzettel über Pensionsbezüge ist (z. B. von PVA, SVS, BVAEB)"),
   kz210: num().describe("KZ 210: Bruttobezüge in Euro"),
   kz215: num().describe("KZ 215: steuerfreie Bezüge"),
   kz220: num().describe("KZ 220: sonstige Bezüge vor Abzug der SV-Beiträge (13./14. Gehalt innerhalb des Jahressechstels)"),
@@ -67,7 +68,7 @@ export function sanitizeExtraction(e: Extraction): Extraction {
   if (lz) {
     const cleaned = { ...lz } as LohnzettelFields;
     for (const k of Object.keys(cleaned) as (keyof LohnzettelFields)[]) {
-      if (k !== "arbeitgeber") (cleaned as Record<string, unknown>)[k] = clampMoney(cleaned[k] as number | null);
+      if (k !== "arbeitgeber" && k !== "istPension") (cleaned as Record<string, unknown>)[k] = clampMoney(cleaned[k] as number | null);
     }
     cleaned.arbeitgeber = clip(cleaned.arbeitgeber, 200);
     if (cleaned.telearbeitstage !== null) cleaned.telearbeitstage = Math.min(366, Math.round(cleaned.telearbeitstage));
@@ -107,6 +108,7 @@ Deine Aufgabe: den Beleg klassifizieren und die Werte exakt so übernehmen, wie 
 Regeln:
 - Beträge immer als Zahl in Euro mit Punkt als Dezimaltrennzeichen (z. B. 52314.17). Tausenderpunkte entfernen.
 - Erfinde niemals Werte. Unleserliche oder fehlende Felder sind null; vermerke das in "warnings".
+- Lohnzettel (L16) über Pensionen (z. B. Pensionsversicherungsanstalt): istPension = true.
 - Lohnzettel (L16): Werte den Kennzahlen zuordnen (KZ 210 Bruttobezüge, KZ 220 sonstige Bezüge, KZ 230 SV-Beiträge,
   KZ 245 steuerpflichtige Bezüge, KZ 260 einbehaltene Lohnsteuer usw.). Sozialversicherungsnummern NICHT übernehmen.
 - Werbungskosten: passende Kategorie wählen (digitale Arbeitsmittel, Arbeitsmittel, Fachliteratur, Reisekosten, Fortbildung, sonstige).
@@ -127,6 +129,7 @@ export function demoExtraction(taxYear: number): Extraction {
     summary: "Jahreslohnzettel L16 aus FinanzOnline (Demo-Daten).",
     lohnzettel: {
       arbeitgeber: "Beispiel GmbH",
+      istPension: false,
       kz210: 50000,
       kz215: 0,
       kz220: 7143,

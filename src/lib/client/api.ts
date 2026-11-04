@@ -63,3 +63,8 @@ export async function askAssistant(
   }
   return text;
 }
+
+/** Kontoauszug (CSV-Text) nach absetzbaren Ausgaben durchsuchen. */
+export function scanBankStatement(csv: string, year: number) {
+  return api<{ findings: import("@/lib/ai/bank").BankFinding[]; hinweis: string | null }>("/api/bank-import", { method: "POST", json: { csv, year } });
+}

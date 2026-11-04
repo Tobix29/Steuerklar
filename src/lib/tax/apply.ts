@@ -33,6 +33,7 @@ export function applyDocument(c: TaxCase, doc: ApplyTarget): { case: TaxCase; am
       next.lohnzettel.push({
         id: doc.id,
         arbeitgeber: l.arbeitgeber ?? "",
+        art: l.istPension ? "pension" : "aktiv",
         kz210: n(l.kz210), kz215: n(l.kz215), kz220: n(l.kz220), kz225: n(l.kz225), kz230: n(l.kz230),
         kz245: n(l.kz245), kz260: n(l.kz260), kz717: n(l.kz717), kz718: n(l.kz718), kz916: n(l.kz916),
       });

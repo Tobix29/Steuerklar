@@ -67,7 +67,7 @@ export function pendlerpauschale(km: number, zumutbar: boolean, fahrten: number,
     else if (km > 20) full = p.pendlerGross.from20;
     else if (km >= 2) full = p.pendlerGross.from2;
   }
-  return cents(full * f);
+  return cents(full * f * p.pendlerFaktor);
 }
 
 export function selbstbehalt(basis: number, reductionPoints: number): number {
@@ -102,7 +102,10 @@ export function calculate(input: TaxCase): TaxResult {
   const hinweise: string[] = [];
   const pflicht: string[] = [];
   const formular: FormEntry[] = [];
-  const hasEmployment = lz.length > 0;
+  const aktiv = lz.filter((x) => x.art !== "pension");
+  const pensionen = lz.filter((x) => x.art === "pension");
+  const hasEmployment = aktiv.length > 0;
+  const hasPension = pensionen.length > 0;
 
   /* ---- Bezüge laut Lohnzettel ---- */
   // KZ 245 ist bereits um die vom Arbeitgeber berücksichtigte Pendlerpauschale (KZ 718) gekürzt.
@@ -115,14 +118,14 @@ export function calculate(input: TaxCase): TaxResult {
 
   /* ---- Werbungskosten ---- */
   const wk: Line[] = [];
-  const pp = pendlerpauschale(input.pendlerKm, input.oeffiZumutbar, input.fahrtenProMonat, p);
+  const pp = hasEmployment ? pendlerpauschale(input.pendlerKm, input.oeffiZumutbar, input.fahrtenProMonat, p) : 0;
   const pendlerAnspruch = pp > 0;
   if (pendlerAnspruch) {
     wk.push({
       label: `${input.oeffiZumutbar ? "Kleines" : "Großes"} Pendlerpauschale (${Math.round(input.pendlerKm)} km)`,
       amount: pp,
       kz: "718",
-      hint: pendlerFaktor(input.fahrtenProMonat) < 1 ? "anteilig wegen weniger Fahrten pro Monat" : undefined,
+      hint: pendlerFaktor(input.fahrtenProMonat) < 1 ? "anteilig wegen weniger Fahrten pro Monat" : p.pendlerFaktor > 1 ? "inkl. befristeter Erhöhung (Mai 2022 – Juni 2023)" : undefined,
     });
     formular.push({ formular: "L1", kz: "718", label: "Pendlerpauschale – tatsächlich zustehender Jahresbetrag", value: `€ ${eur(pp)}` });
   } else if (input.pendlerKm > 0 && input.fahrtenProMonat >= 4) {
@@ -227,61 +230,125 @@ export function calculate(input: TaxCase): TaxResult {
   const agbSumme = sum(agb);
   const einkommen = Math.max(0, cents(einkommenVorAgb - agbSumme));
 
-  /* ---- Tarif und Absetzbeträge ---- */
-  const tarif = tarifsteuer(einkommen, p);
-  const abs: Line[] = [];
-  const neg: Line[] = [];
+  /* ---- Tarif und Absetzbeträge (als Funktion, damit die Kapitalertrags-Option verglichen werden kann) ---- */
+  const svPension = cents(pensionen.reduce((a, x) => a + x.kz230 + x.kz225, 0));
+  const pensionsEinkuenfte = cents(pensionen.reduce((a, x) => a + x.kz245, 0));
+  const pabErhoeht = hasPension && input.pensionErhoeht && input.partnerEinkuenfte <= p.pension.partnerLimit && !avabBerechtigt;
+  if (hasPension && input.pensionErhoeht && !pabErhoeht)
+    hinweise.push(`Kein erhöhter Pensionistenabsetzbetrag: Partnereinkünfte über ${eur(p.pension.partnerLimit)} € oder Anspruch auf Alleinverdienerabsetzbetrag.`);
 
-  let fb = 0;
-  for (const c of kids) {
-    const age = year - c.birthYear;
-    const full = age < 18 ? p.familienbonus.under18 : p.familienbonus.over18;
-    fb += full * (c.months / 12) * c.familienbonusShare;
-  }
-  fb = cents(fb);
-  const fbWirksam = Math.min(fb, tarif);
-  if (fb > 0) {
-    abs.push({ label: "Familienbonus Plus", amount: fbWirksam, hint: fbWirksam < fb ? `Anspruch ${eur(fb)} € – kann die Steuer nur bis 0 senken` : undefined });
-    formular.push({ formular: "L1k", kz: "—", label: "Familienbonus Plus beantragen (je Kind ein L1k)", value: kids.map((k) => `${k.firstName || "Kind"}: ${k.familienbonusShare === 1 ? "ganz" : "Hälfte"}`).join(", ") });
-  }
-  let steuer = cents(tarif - fbWirksam);
+  function steuerAus(eink: number, collect: boolean) {
+    const tarif = tarifsteuer(eink, p);
+    const abs: Line[] = [];
+    const neg: Line[] = [];
+    const form: FormEntry[] = [];
 
-  const { vab, zuschlag } = hasEmployment ? verkehrsabsetzbetrag(einkommen, p) : { vab: 0, zuschlag: 0 };
-  const pendlereuro = pendlerAnspruch ? cents(input.pendlerKm * p.pendlereuroPerKm * pendlerFaktor(input.fahrtenProMonat)) : 0;
-  if (vab > 0) abs.push({ label: "Verkehrsabsetzbetrag", amount: vab });
-  if (zuschlag > 0) abs.push({ label: "Zuschlag zum Verkehrsabsetzbetrag", amount: zuschlag, hint: "für niedrige Einkommen" });
-  if (pendlereuro > 0) {
-    abs.push({ label: `Pendlereuro (${Math.round(input.pendlerKm)} km × ${p.pendlereuroPerKm} €)`, amount: pendlereuro, kz: "916" });
-    formular.push({ formular: "L1", kz: "916", label: "Pendlereuro – zustehender Jahresbetrag", value: `€ ${eur(pendlereuro)}` });
-  }
-  // Pendlereuro wirkt nur bis 0; VAB und Zuschlag können über die SV-Rückerstattung zu einer Gutschrift führen.
-  steuer = cents(Math.max(0, steuer - pendlereuro) - vab - zuschlag);
-  if (steuer < 0) {
-    const cap = (pendlerAnspruch ? p.svRueckerstattung.maxPendler : p.svRueckerstattung.max) + zuschlag;
-    const svRe = cents(Math.min(-steuer, sv * p.svRueckerstattung.rate, cap));
-    if (svRe > 0) neg.push({ label: "SV-Rückerstattung", amount: svRe, hint: `${p.svRueckerstattung.rate * 100} % der SV-Beiträge` });
-    steuer = -svRe;
+    let fb = 0;
+    for (const c of kids) {
+      const age = year - c.birthYear;
+      const full = age < 18 ? p.familienbonus.under18 : p.familienbonus.over18;
+      fb += full * (c.months / 12) * c.familienbonusShare;
+    }
+    fb = cents(fb);
+    const fbWirksam = Math.min(fb, tarif);
+    if (fb > 0) {
+      abs.push({ label: "Familienbonus Plus", amount: fbWirksam, hint: fbWirksam < fb ? `Anspruch ${eur(fb)} € – kann die Steuer nur bis 0 senken` : undefined });
+      form.push({ formular: "L1k", kz: "—", label: "Familienbonus Plus beantragen (je Kind ein L1k)", value: kids.map((k) => `${k.firstName || "Kind"}: ${k.familienbonusShare === 1 ? "ganz" : "Hälfte"}`).join(", ") });
+    }
+    let steuer = cents(tarif - fbWirksam);
+
+    const { vab, zuschlag } = hasEmployment ? verkehrsabsetzbetrag(eink, p) : { vab: 0, zuschlag: 0 };
+    const pendlereuro = pendlerAnspruch ? cents(input.pendlerKm * p.pendlereuroPerKm * pendlerFaktor(input.fahrtenProMonat)) : 0;
+    if (vab > 0) abs.push({ label: "Verkehrsabsetzbetrag", amount: vab });
+    if (zuschlag > 0) abs.push({ label: "Zuschlag zum Verkehrsabsetzbetrag", amount: zuschlag, hint: "für niedrige Einkommen" });
+    if (pendlereuro > 0) {
+      abs.push({ label: `Pendlereuro (${Math.round(input.pendlerKm)} km × ${p.pendlereuroPerKm} €)`, amount: pendlereuro, kz: "916" });
+      form.push({ formular: "L1", kz: "916", label: "Pendlereuro – zustehender Jahresbetrag", value: `€ ${eur(pendlereuro)}` });
+    }
+
+    // Unterhaltsabsetzbetrag (§33 Abs 4 Z 3): je Kind und Monat, wirkt nur bis 0
+    let uab = 0;
+    input.unterhaltKinder.forEach((k, i) => {
+      uab += k.months * p.uab[Math.min(i, 2)]!;
+    });
+    uab = cents(uab);
+    if (uab > 0) {
+      abs.push({ label: "Unterhaltsabsetzbetrag", amount: uab, hint: `${input.unterhaltKinder.length} Kind(er)` });
+      form.push({ formular: "L1", kz: "—", label: "Unterhaltsabsetzbetrag beantragen (Beilage L1k)", value: `€ ${eur(uab)}` });
+    }
+
+    // Pensionistenabsetzbetrag (§33 Abs 6), linear eingeschliffen
+    let pab = 0;
+    if (hasPension) {
+      const full = pabErhoeht ? p.pension.pabErhoeht : p.pension.pab;
+      const from = pabErhoeht ? p.pension.fromErhoeht : p.pension.from;
+      pab = pensionsEinkuenfte <= from ? full : pensionsEinkuenfte >= p.pension.to ? 0 : cents((full * (p.pension.to - pensionsEinkuenfte)) / (p.pension.to - from));
+      if (pab > 0) abs.push({ label: pabErhoeht ? "Erhöhter Pensionistenabsetzbetrag" : "Pensionistenabsetzbetrag", amount: pab });
+      if (pabErhoeht) form.push({ formular: "L1", kz: "—", label: "Erhöhten Pensionistenabsetzbetrag beantragen", value: "ja" });
+    }
+
+    // Pendlereuro und Unterhaltsabsetzbetrag wirken nur bis 0; VAB/Zuschlag/PAB können über die SV-Rückerstattung zu einer Gutschrift führen.
+    steuer = cents(Math.max(0, steuer - pendlereuro - uab) - vab - zuschlag - pab);
+    if (steuer < 0) {
+      let svRe = 0;
+      if (hasEmployment) {
+        const cap = (pendlerAnspruch ? p.svRueckerstattung.maxPendler : p.svRueckerstattung.max) + zuschlag;
+        svRe = cents(Math.min(-steuer, sv * p.svRueckerstattung.rate, cap));
+        if (svRe > 0) neg.push({ label: "SV-Rückerstattung", amount: svRe, hint: `${p.svRueckerstattung.rate * 100} % der SV-Beiträge` });
+      } else if (hasPension) {
+        svRe = cents(Math.min(-steuer, svPension * p.pension.svRate, p.pension.svMax));
+        if (svRe > 0) neg.push({ label: "SV-Rückerstattung für Pensionist:innen", amount: svRe, hint: `${Math.round(p.pension.svRate * 100)} % der Beiträge, max. ${eur(p.pension.svMax)} €` });
+      }
+      steuer = -svRe;
+    }
+
+    if (avabBerechtigt) {
+      const a = avabBetrag(kids.length, p);
+      neg.push({ label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag" : "Alleinverdienerabsetzbetrag", amount: a, hint: "wird auch ohne Steuerschuld ausbezahlt" });
+      form.push({ formular: "L1", kz: "—", label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag beantragen" : "Alleinverdienerabsetzbetrag beantragen", value: `${kids.length} Kind(er)` });
+      steuer = cents(steuer - a);
+    }
+
+    // Kindermehrbetrag (vereinfacht): Differenz zwischen dem Betrag je Kind und der Steuer vor Familienbonus
+    if (kids.length > 0 && (avabBerechtigt || hasEmployment || hasPension)) {
+      const kmb = cents(Math.max(0, p.kindermehrbetrag * kids.length - tarif));
+      if (kmb > 0) {
+        neg.push({ label: "Kindermehrbetrag", amount: kmb, hint: "vereinfachte Berechnung" });
+        steuer = cents(steuer - kmb);
+      }
+    }
+    if (collect) formular.push(...form);
+    return { tarif, steuer, abs, neg };
   }
 
-  if (avabBerechtigt) {
-    const a = avabBetrag(kids.length, p);
-    neg.push({ label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag" : "Alleinverdienerabsetzbetrag", amount: a, hint: "wird auch ohne Steuerschuld ausbezahlt" });
-    formular.push({ formular: "L1", kz: "—", label: input.familienstatus === "alleinerzieher" ? "Alleinerzieherabsetzbetrag beantragen" : "Alleinverdienerabsetzbetrag beantragen", value: `${kids.length} Kind(er)` });
-    steuer = cents(steuer - a);
-  }
+  const basis = steuerAus(einkommen, true);
+  const { tarif, abs, neg } = basis;
+  const steuer = basis.steuer;
 
-  // Kindermehrbetrag (vereinfacht): Differenz zwischen 700 € je Kind und der Steuer vor Familienbonus
-  if (kids.length > 0 && (avabBerechtigt || hasEmployment)) {
-    const kmb = cents(Math.max(0, p.kindermehrbetrag * kids.length - tarif));
-    if (kmb > 0 && tarif < p.kindermehrbetrag * kids.length) {
-      neg.push({ label: "Kindermehrbetrag", amount: kmb, hint: "vereinfachte Berechnung" });
-      steuer = cents(steuer - kmb);
+  /* ---- Kapitalerträge: Regelbesteuerungsoption (§27a Abs 5) ---- */
+  const k = input.kapital;
+  const kapitalSumme = cents(k.ertraege275 + k.ertraege25);
+  let kapitalErstattung = 0;
+  let kapitalOption: TaxResult["kapitalOption"] = null;
+  if (kapitalSumme > 0) {
+    const regel = steuerAus(einkommen + kapitalSumme, false);
+    const mehrsteuer = cents(regel.steuer - steuer);
+    const erst = cents(k.kestBezahlt - mehrsteuer);
+    const empfohlen = erst >= 1;
+    kapitalOption = { empfohlen, erstattung: empfohlen ? erst : 0, mehrsteuer };
+    if (empfohlen) {
+      kapitalErstattung = erst;
+      neg.push({ label: "KESt-Gutschrift (Regelbesteuerungsoption)", amount: erst, hint: `KESt ${eur(k.kestBezahlt)} € − Steuer nach Tarif ${eur(Math.max(0, mehrsteuer))} €` });
+      formular.push({ formular: "E1kv", kz: "—", label: "Regelbesteuerungsoption für Kapitalerträge ausüben (Erklärung E1 mit Beilage E1kv statt L1)", value: `€ ${eur(kapitalSumme)} Erträge` });
+      hinweise.push("Die Regelbesteuerungsoption gilt für alle Kapitalerträge mit Sondersteuersatz. Vermittelst du jemandem den Alleinverdienerabsetzbetrag, kann die Erstattung entfallen.");
+    } else {
+      hinweise.push("Die Regelbesteuerungsoption für Kapitalerträge lohnt sich bei dir nicht – dein Steuersatz liegt über dem KESt-Satz.");
     }
   }
 
   const est = cents(steuer + steuerSonst);
   const lst = cents(lz.reduce((a, x) => a + x.kz260, 0));
-  const erstattung = cents(lst - est);
+  const erstattung = cents(lst - est + kapitalErstattung);
 
   /* ---- Steuersätze ---- */
   const grenz = einkommen > 0 ? (tarifsteuer(einkommen + 100, p) - tarifsteuer(einkommen, p)) / 100 : 0;
@@ -292,7 +359,7 @@ export function calculate(input: TaxCase): TaxResult {
   if (lz.length > 1) pflicht.push("Mehrere Lohnzettel im selben Zeitraum – die Arbeitnehmerveranlagung ist dann meist verpflichtend (Frist: 30. September des Folgejahres).");
   if (lz.some((x) => x.kz718 > 0) && Math.abs(lz.reduce((a, x) => a + x.kz718, 0) - pp) > 1)
     pflicht.push("Die vom Arbeitgeber berücksichtigte Pendlerpauschale weicht vom zustehenden Betrag ab – bei zu hohem Betrag besteht Pflicht zur Veranlagung.");
-  if (!hasEmployment) hinweise.push("Lade deinen Lohnzettel (L16) hoch – du findest ihn in FinanzOnline unter „Abfragen“.");
+  if (!hasEmployment && !hasPension) hinweise.push("Lade deinen Lohnzettel (L16) hoch – du findest ihn in FinanzOnline unter „Abfragen“.");
   if (input.spenden.length || input.kirchenbeitrag > 0) hinweise.push("Spenden und Kirchenbeitrag werden automatisch an das Finanzamt übermittelt – bitte nicht zusätzlich eintragen.");
   if (erstattung > 0 && pflicht.length === 0 && hasEmployment)
     hinweise.push("Gibst du keine Erklärung ab, kann die antragslose Arbeitnehmerveranlagung greifen – Werbungskosten und Familienbonus werden dann aber nicht berücksichtigt.");
@@ -321,6 +388,7 @@ export function calculate(input: TaxCase): TaxResult {
     grenzsteuersatz: Math.round(grenz * 1000) / 1000,
     durchschnittssteuersatz: brutto > 0 ? Math.round((Math.max(0, est) / brutto) * 1000) / 1000 : 0,
     formular,
+    kapitalOption,
     hinweise,
     pflichtveranlagung: pflicht,
   };

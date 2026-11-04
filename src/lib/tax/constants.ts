@@ -11,8 +11,9 @@
  * EStG (RIS) und das BMF-Steuerbuch geprüft werden. Jede Änderung → Test in calculate.test.ts.
  */
 
-export type TaxYear = 2024 | 2025 | 2026;
-export const SUPPORTED_YEARS: TaxYear[] = [2024, 2025, 2026];
+export type TaxYear = 2021 | 2022 | 2023 | 2024 | 2025 | 2026;
+/** Die Arbeitnehmerveranlagung ist bis zu fünf Jahre rückwirkend möglich. */
+export const SUPPORTED_YEARS: TaxYear[] = [2021, 2022, 2023, 2024, 2025, 2026];
 /** Im Herbst 2026 wird typischerweise die Arbeitnehmerveranlagung 2025 gemacht. */
 export const DEFAULT_YEAR: TaxYear = 2025;
 
@@ -49,12 +50,122 @@ export interface YearParams {
   kirchenbeitragMax: number;
   telearbeit: { perDay: number; maxDays: number };
   mobiliarMax: number;
+  /** Zeitweise Erhöhung des Pendlerpauschales (Mai 2022 – Juni 2023: +50 %), als Jahresfaktor */
+  pendlerFaktor: number;
+  /** Pensionistenabsetzbetrag (§33 Abs 6): normal und erhöht, linear eingeschliffen bis `to` */
+  pension: {
+    pab: number; from: number;
+    pabErhoeht: number; fromErhoeht: number;
+    to: number;
+    partnerLimit: number;
+    /** SV-Rückerstattung für Pensionist:innen */
+    svRate: number; svMax: number;
+  };
+  /** Unterhaltsabsetzbetrag je Monat: 1. Kind, 2. Kind, jedes weitere */
+  uab: [number, number, number];
 }
 
+const PENDLER_KLEIN = { from20: 696, from40: 1356, from60: 2016 };
+const PENDLER_GROSS = { from2: 372, from20: 1476, from40: 2568, from60: 3672 };
+
 export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
+  2021: {
+    year: 2021,
+    unverified: ["svRueckerstattung", "pension.from/to", "pension.svRate", "pension.svMax"],
+    brackets: [
+      { upTo: 11000, rate: 0 },
+      { upTo: 18000, rate: 0.2 },
+      { upTo: 31000, rate: 0.35 },
+      { upTo: 60000, rate: 0.42 },
+      { upTo: 90000, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 400,
+    vabZuschlag: { amount: 650, from: 15500, to: 21500 },
+    pendlereuroPerKm: 2,
+    pendlerKlein: PENDLER_KLEIN,
+    pendlerGross: PENDLER_GROSS,
+    familienbonus: { under18: 1500.12, over18: 500.04 },
+    kindermehrbetrag: 250,
+    avab: { oneChild: 494, twoChildren: 669, perFurtherChild: 220 },
+    avabPartnerIncomeLimit: 6000,
+    svRueckerstattung: { rate: 0.5, max: 400, maxPendler: 500 },
+    kirchenbeitragMax: 400,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
+    pendlerFaktor: 1,
+    pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 0.75, svMax: 300 },
+    uab: [29.2, 43.8, 58.4],
+  },
+  2022: {
+    year: 2022,
+    // 2022: Tarifsenkung auf 32,5 % (Mischsatz), Familienbonus rückwirkend erhöht, Pendlerpauschale/-euro ab Mai erhöht,
+    // Teuerungsabsetzbetrag (bis 500 €) ist NICHT abgebildet.
+    unverified: ["svRueckerstattung", "pendlerFaktor", "pendlereuroPerKm", "teuerungsabsetzbetrag fehlt", "pension"],
+    brackets: [
+      { upTo: 11000, rate: 0 },
+      { upTo: 18000, rate: 0.2 },
+      { upTo: 31000, rate: 0.325 },
+      { upTo: 60000, rate: 0.42 },
+      { upTo: 90000, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 400,
+    vabZuschlag: { amount: 650, from: 16000, to: 24500 },
+    // 2 € + 0,50 € je km und Monat für Mai–Dezember
+    pendlereuroPerKm: 6,
+    pendlerKlein: PENDLER_KLEIN,
+    pendlerGross: PENDLER_GROSS,
+    familienbonus: { under18: 2000.16, over18: 650.16 },
+    kindermehrbetrag: 550,
+    avab: { oneChild: 494, twoChildren: 669, perFurtherChild: 220 },
+    avabPartnerIncomeLimit: 6000,
+    svRueckerstattung: { rate: 0.55, max: 400, maxPendler: 500 },
+    kirchenbeitragMax: 400,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
+    pendlerFaktor: 4 / 12 + (8 / 12) * 1.5,
+    pension: { pab: 825, from: 17500, pabErhoeht: 1214, fromErhoeht: 19930, to: 25000, partnerLimit: 2200, svRate: 0.75, svMax: 550 },
+    uab: [29.2, 43.8, 58.4],
+  },
+  2023: {
+    year: 2023,
+    unverified: ["svRueckerstattung.maxPendler", "pendlerFaktor", "pendlereuroPerKm", "pension.svRate", "pension.svMax"],
+    brackets: [
+      { upTo: 11693, rate: 0 },
+      { upTo: 19134, rate: 0.2 },
+      { upTo: 32075, rate: 0.3 },
+      { upTo: 62080, rate: 0.41 },
+      { upTo: 93120, rate: 0.48 },
+      { upTo: 1_000_000, rate: 0.5 },
+      { upTo: Infinity, rate: 0.55 },
+    ],
+    werbungskostenpauschale: 132,
+    vab: 421,
+    vabZuschlag: { amount: 684, from: 16832, to: 25774 },
+    // 2 € + 0,50 € je km und Monat für Jänner–Juni
+    pendlereuroPerKm: 5,
+    pendlerKlein: PENDLER_KLEIN,
+    pendlerGross: PENDLER_GROSS,
+    familienbonus: { under18: 2000.16, over18: 650.16 },
+    kindermehrbetrag: 550,
+    avab: { oneChild: 520, twoChildren: 704, perFurtherChild: 232 },
+    avabPartnerIncomeLimit: 6312,
+    svRueckerstattung: { rate: 0.55, max: 421, maxPendler: 526 },
+    kirchenbeitragMax: 400,
+    telearbeit: { perDay: 3, maxDays: 100 },
+    mobiliarMax: 300,
+    pendlerFaktor: (6 / 12) * 1.5 + 6 / 12,
+    pension: { pab: 868, from: 18410, pabErhoeht: 1278, fromErhoeht: 20967, to: 26826, partnerLimit: 2315, svRate: 0.8, svMax: 579 },
+    uab: [31, 47, 62],
+  },
   2024: {
     year: 2024,
-    unverified: ["vabZuschlag", "svRueckerstattung.maxPendler", "avabPartnerIncomeLimit"],
+    unverified: ["vabZuschlag", "svRueckerstattung.maxPendler", "avabPartnerIncomeLimit", "pension.from/to", "pension.partnerLimit", "pension.svMax"],
     brackets: [
       { upTo: 12816, rate: 0 },
       { upTo: 20818, rate: 0.2 },
@@ -78,10 +189,13 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     kirchenbeitragMax: 600,
     telearbeit: { perDay: 3, maxDays: 100 },
     mobiliarMax: 300,
+    pendlerFaktor: 1,
+    pension: { pab: 954, from: 20459, pabErhoeht: 1405, fromErhoeht: 23301, to: 29812, partnerLimit: 2545, svRate: 0.8, svMax: 618 },
+    uab: [35, 52, 69],
   },
   2025: {
     year: 2025,
-    unverified: ["svRueckerstattung.maxPendler", "avabPartnerIncomeLimit"],
+    unverified: ["svRueckerstattung.maxPendler", "avabPartnerIncomeLimit", "pension.partnerLimit", "pension.svMax"],
     brackets: [
       { upTo: 13308, rate: 0 },
       { upTo: 21617, rate: 0.2 },
@@ -105,10 +219,13 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     kirchenbeitragMax: 600,
     telearbeit: { perDay: 3, maxDays: 100 },
     mobiliarMax: 300,
+    pendlerFaktor: 1,
+    pension: { pab: 1002, from: 21245, pabErhoeht: 1476, fromErhoeht: 24196, to: 30957, partnerLimit: 2674, svRate: 0.8, svMax: 711 },
+    uab: [37, 55, 73],
   },
   2026: {
     year: 2026,
-    unverified: ["vab", "vabZuschlag", "svRueckerstattung", "familienbonus.over18", "avabPartnerIncomeLimit"],
+    unverified: ["vab", "vabZuschlag", "svRueckerstattung", "familienbonus.over18", "avabPartnerIncomeLimit", "pension.svRate"],
     brackets: [
       { upTo: 13539, rate: 0 },
       { upTo: 21992, rate: 0.2 },
@@ -133,6 +250,9 @@ export const YEAR_PARAMS: Record<TaxYear, YearParams> = {
     kirchenbeitragMax: 600,
     telearbeit: { perDay: 3, maxDays: 100 },
     mobiliarMax: 300,
+    pendlerFaktor: 1,
+    pension: { pab: 1020, from: 21614, pabErhoeht: 1502, fromErhoeht: 24616, to: 31494, partnerLimit: 2720, svRate: 0.8, svMax: 723 },
+    uab: [38, 56, 75],
   },
 };
 
@@ -192,6 +312,7 @@ export const BUNDESLAENDER = [
 
 /** Werbungskosten-Kategorien mit Kennzahl im Formular L1 (Zuordnung vor Produktivbetrieb verifizieren). */
 export const WK_KATEGORIEN = {
+  gewerkschaft: { label: "Gewerkschaftsbeiträge (nicht vom Arbeitgeber abgezogen)", kz: "717" },
   digitale_arbeitsmittel: { label: "Digitale Arbeitsmittel (Computer, Internet)", kz: "169" },
   arbeitsmittel: { label: "Arbeitsmittel (Werkzeug, Berufskleidung)", kz: "719" },
   fachliteratur: { label: "Fachliteratur", kz: "720" },
@@ -200,3 +321,12 @@ export const WK_KATEGORIEN = {
   sonstige: { label: "Sonstige Werbungskosten", kz: "724" },
 } as const;
 export type WkKategorie = keyof typeof WK_KATEGORIEN;
+
+/** Fristen der Arbeitnehmerveranlagung: freiwillig 5 Jahre, Pflichtveranlagung bis 30. September des Folgejahres. */
+export function fristen(year: number, today = new Date()) {
+  const antrag = new Date(Date.UTC(year + 5, 11, 31, 23, 59, 59));
+  const pflicht = new Date(Date.UTC(year + 1, 8, 30, 23, 59, 59));
+  const yearEnded = today.getTime() > Date.UTC(year, 11, 31, 23, 59, 59);
+  const daysLeft = Math.ceil((antrag.getTime() - today.getTime()) / 86_400_000);
+  return { antrag, pflicht, yearEnded, daysLeft, expired: daysLeft < 0, urgent: daysLeft >= 0 && daysLeft <= 90 };
+}
