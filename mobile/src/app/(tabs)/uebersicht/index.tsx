@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { Text, View } from "react-native";
 import { Badge, Button, Card, Loading, Notice, Row, Screen, Section, useTextStyles } from "~/components/ui";
 import { YearChips, YearsOverview } from "~/components/YearsOverview";
+import { NaechsteTermine, RuecklagenPlaner } from "~/components/Planer";
 import { useCase } from "~/lib/case";
 import { eur } from "~/lib/format";
 import { useColors } from "~/lib/theme";
@@ -51,6 +52,10 @@ export default function Uebersicht() {
       </Card>
 
       <YearsOverview />
+
+      <NaechsteTermine data={data} result={result} />
+
+      <RuecklagenPlaner data={data} result={result} />
 
       <Section title={`Fortschritt · ${done} von ${steps.length}`}>
         {steps.map((s) => (

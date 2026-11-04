@@ -25,6 +25,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Fragen</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} md="chat" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="finanzamt">
+        <NativeTabs.Trigger.Label>Finanzamt</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: "building.columns", selected: "building.columns.fill" }} md="account_balance" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="konto">
         <NativeTabs.Trigger.Label>Konto</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} md="settings" />

@@ -65,8 +65,8 @@ export interface UploadFile {
   mimeType: string;
 }
 
-/** Multipart-Upload eines Belegs. */
-export async function uploadDocument<T>(file: UploadFile, year: number): Promise<T> {
+/** Multipart-Upload einer Datei mit zusätzlichen Formularfeldern. */
+export async function uploadForm<T>(path: string, file: UploadFile, fields: Record<string, string>): Promise<T> {
   if (API.error) throw new ApiError(0, API.error);
   const form = new FormData();
   if (Platform.OS === "web") {
@@ -76,14 +76,46 @@ export async function uploadDocument<T>(file: UploadFile, year: number): Promise
     // React Native akzeptiert {uri, name, type} als Datei-Teil
     form.append("file", { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
   }
-  form.append("year", String(year));
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
   let res: Response;
   try {
-    res = await fetch(`${API.url}/api/documents`, { method: "POST", headers: headers(), body: form, credentials: "omit" });
+    res = await fetch(`${API.url}${path}`, { method: "POST", headers: headers(), body: form, credentials: "omit" });
   } catch {
     throw new ApiError(0, "Upload fehlgeschlagen – keine Verbindung zum Server.");
   }
-  return handle<T>(res, "/api/documents");
+  return handle<T>(res, path);
+}
+
+/** Multipart-Upload eines Belegs. */
+export function uploadDocument<T>(file: UploadFile, year: number): Promise<T> {
+  return uploadForm<T>("/api/documents", file, { year: String(year) });
+}
+
+/**
+ * Lädt eine Datei mit Anmeldung herunter. Nativ: lokale URI im Cache (zum Teilen).
+ * Web-Vorschau: startet den Browser-Download direkt und gibt null zurück.
+ */
+export async function downloadAuthed(path: string, filename: string, accept: string): Promise<string | null> {
+  if (API.error) throw new ApiError(0, API.error);
+  const url = `${API.url}${path}`;
+  if (Platform.OS === "web") {
+    const res = await fetch(url, { headers: headers({ Accept: accept }), credentials: "omit" });
+    if (!res.ok) throw new ApiError(res.status, "Download fehlgeschlagen.");
+    const href = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    return null;
+  }
+  const target = new File(Paths.cache, filename);
+  try {
+    const file = await File.downloadFileAsync(url, target, { headers: headers({ Accept: accept }), idempotent: true });
+    return file.uri;
+  } catch {
+    throw new ApiError(0, "Die Datei konnte nicht geladen werden.");
+  }
 }
 
 /** Lädt die Ausfüllhilfe als PDF in den Cache und gibt die lokale URI zurück. */
