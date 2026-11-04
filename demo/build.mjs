@@ -43,6 +43,9 @@ await build({
   logLevel: "warning",
 });
 
+// pdf.js-Worker als eigene Datei veröffentlichen (Module Worker aus eigener Datei sind im Artifact erlaubt)
+writeFileSync(path.join(out, "pdf.worker.min.mjs"), readFileSync(path.join(root, "node_modules", "pdfjs-dist", "build", "pdf.worker.min.mjs")));
+
 // Stylesheet der Web-App + Ergänzungen für den Artifact-Viewer (expliziter Dark-Mode-Schalter, Demo-Banner).
 const css = readFileSync(path.join(root, "src", "app", "globals.css"), "utf8");
 const darkBlock = css.match(/:root:not\(\[data-theme="light"\]\) \{([\s\S]*?)\n  \}/)?.[1] ?? "";

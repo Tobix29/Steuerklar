@@ -144,6 +144,8 @@ export const TaxCaseSchema = z.object({
     .default([]),
   mietobjekte: z.array(MietobjektSchema).max(20).default([]),
   betriebe: z.array(BetriebSchema).max(10).default([]),
+  /** Noch nicht verrechnete betriebliche Verluste aus Vorjahren (Verlustvortrag, §18 Abs 6 EStG) */
+  verlustvortrag: optMoney,
   /** Pension: Antrag auf erhöhten Pensionistenabsetzbetrag (Ehe/Partnerschaft, geringe Partnereinkünfte) */
   pensionErhoeht: z.boolean().default(false),
   /** Kapitalerträge mit Sondersteuersatz und bereits einbehaltene KESt (für die Regelbesteuerungsoption) */

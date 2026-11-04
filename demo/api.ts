@@ -11,6 +11,7 @@ import { SUPPORTED_YEARS, type TaxYear } from "@/lib/tax/constants";
 import { TaxCaseSchema } from "@/lib/tax/types";
 import type { StoredDocument } from "@/lib/server/repo";
 import { store } from "./store";
+import { pdfToImages } from "./pdf";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
 import { BankResultSchema, bankInstructions, prepareCsv, type BankFinding } from "@/lib/ai/bank";
 
@@ -53,14 +54,23 @@ async function extract(file: File, year: number): Promise<{ extraction: Extracti
   const sample = await capability("sample");
   const limits = sample ? await sample.limits().catch(() => null) : null;
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-  if (sample && limits?.images && !isPdf) {
+  let images: Blob[] = [file];
+  if (sample && limits?.images && isPdf) {
+    try {
+      images = await pdfToImages(file, Math.min(3, limits.images.maxCount ?? 3), Math.min(3_500_000, limits.images.maxInputBytes ?? 3_500_000));
+    } catch {
+      throw new ApiError(422, "Das PDF konnte nicht gelesen werden. Ist es passwortgeschützt? Lade sonst ein Foto oder einen Screenshot hoch.");
+    }
+    if (images.length === 0) throw new ApiError(422, "Das PDF enthält keine lesbaren Seiten.");
+  }
+  if (sample && limits?.images) {
     const prompt = `${EXTRACTION_INSTRUCTIONS}
 
-Erfasse den beigefügten Beleg für die Arbeitnehmerveranlagung ${year}.
+Erfasse den beigefügten Beleg${isPdf ? " (Seiten eines PDFs als Bilder)" : ""} für die Arbeitnehmerveranlagung ${year}.
 Antworte ausschließlich mit einem JSON-Objekt, das genau diesem JSON-Schema entspricht (keine Erklärungen, kein Markdown):
 ${jsonSchema}`;
     try {
-      const out = await sample.json(prompt, { images: [file], modelTier: "default", cache: false });
+      const out = await sample.json(prompt, { images, modelTier: "default", cache: false });
       const parsed = ExtractionSchema.safeParse(out);
       if (!parsed.success) throw new ApiError(422, "Die Erkennung lieferte ungültige Daten. Bitte ein schärferes Foto verwenden.");
       return { extraction: sanitizeExtraction(parsed.data), demo: false };
@@ -74,9 +84,7 @@ ${jsonSchema}`;
   }
   const e = demoExtraction(year);
   e.warnings = [
-    isPdf && limits?.images
-      ? "PDFs liest die Demo nicht aus – lade ein Foto oder einen Screenshot hoch, damit Claude den Beleg erkennt. Hier siehst du Beispielwerte."
-      : "Beispielwerte: Die Belegerkennung durch Claude ist in dieser Ansicht nicht verfügbar oder wurde nicht erlaubt.",
+    "Beispielwerte: Die Belegerkennung durch Claude ist in dieser Ansicht nicht verfügbar oder wurde nicht erlaubt.",
   ];
   return { extraction: e, demo: true };
 }

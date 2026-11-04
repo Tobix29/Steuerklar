@@ -221,6 +221,17 @@ export function calculate(input: TaxCase): TaxResult {
     sa.push({ label: "Steuerberatungskosten", amount: stb, kz: "460" });
     formular.push({ formular: "L1", kz: "460", label: "Steuerberatungskosten", value: `€ ${eur(stb)}` });
   }
+  // Verlustvortrag: max. 75 % des Gesamtbetrags der Einkünfte (Verlustvortragsgrenze)
+  if (input.verlustvortrag > 0) {
+    const cap = cents(Math.max(0, gde - sum(sa)) * 0.75);
+    const abzug = cents(Math.min(input.verlustvortrag, cap));
+    if (abzug > 0) {
+      sa.push({ label: "Verlustvortrag aus Vorjahren", amount: abzug, hint: abzug < input.verlustvortrag ? `max. 75 % – Rest ${eur(input.verlustvortrag - abzug)} € bleibt für Folgejahre` : undefined });
+      formular.push({ formular: "E1", kz: "—", label: "Verlustabzug (Verlustvortrag) eintragen", value: `€ ${eur(abzug)}` });
+    }
+  }
+  if (gde < 0 && betriebSumme < 0)
+    hinweise.push(`Dein betrieblicher Verlust kann nicht ganz ausgeglichen werden – bis zu ${eur(Math.min(-gde, -betriebSumme))} € kannst du in den Folgejahren als Verlustvortrag abziehen.`);
   const saSumme = sum(sa);
   const einkommenVorAgb = cents(gde - saSumme);
 

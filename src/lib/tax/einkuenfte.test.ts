@@ -94,3 +94,16 @@ describe("Teuerungsabsetzbetrag 2022", () => {
     expect(t).toBeLessThan(500);
   });
 });
+
+describe("Verlustvortrag", () => {
+  it("max. 75 % des Gesamtbetrags der Einkünfte", () => {
+    const r = calculate(TaxCaseSchema.parse({ year: 2025, betriebe: [{ id: "b", einnahmen: 40_000, ausgaben: 20_000 }], verlustvortrag: 50_000 }));
+    const line = r.sonderausgaben.find((l) => l.label.startsWith("Verlustvortrag"))!;
+    expect(line.amount).toBeCloseTo(20_000 * 0.85 * 0.75, 2);
+    expect(line.hint).toContain("Rest");
+  });
+  it("Hinweis bei nicht ausgleichbarem Verlust", () => {
+    const r = calculate(TaxCaseSchema.parse({ year: 2025, betriebe: [{ id: "b", einnahmen: 5000, ausgaben: 12_000 }] }));
+    expect(r.hinweise.some((h) => h.includes("Verlustvortrag"))).toBe(true);
+  });
+});

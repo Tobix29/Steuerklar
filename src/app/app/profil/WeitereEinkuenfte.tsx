@@ -167,6 +167,14 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
         );
       })}
 
+      {data.betriebe.length > 0 && (
+        <div className="list">
+          <Row label="Verlustvortrag aus Vorjahren" help="Noch nicht verrechnete Verluste aus selbständiger oder gewerblicher Tätigkeit – max. 75 % des Gesamtbetrags der Einkünfte pro Jahr">
+            <MoneyInput ariaLabel="Verlustvortrag" value={data.verlustvortrag} onChange={(v) => set((d) => void (d.verlustvortrag = v))} />
+          </Row>
+        </div>
+      )}
+
       <div className="row wrap">
         <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.mietobjekte.push(MietobjektSchema.parse({ id: uid(), anschaffungsjahr: year - 5 })))}>+ Vermietung</button>
         <button className="btn btn-secondary btn-sm" onClick={() => set((d) => void d.betriebe.push(BetriebSchema.parse({ id: uid() })))}>+ Selbständig / Gewerbe</button>
