@@ -1,5 +1,5 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Envelope-Verschlüsselung (AES-256-GCM):
@@ -23,8 +23,13 @@ function kek(): Buffer {
     cachedKek = createHash("sha256").update("steuerklar-dev-only-key").digest();
     return cachedKek;
   }
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32) throw new Error("DATA_ENCRYPTION_KEY muss 32 Byte (Base64) lang sein");
+  // Bevorzugt: 32 Byte als Base64 (openssl rand -base64 32). Alternativ: zufällige Zeichenkette mit
+  // mindestens 40 Zeichen (z. B. aus einem Passwort-Generator) – daraus wird per HKDF-SHA256 der Schlüssel abgeleitet.
+  const decoded = /^[A-Za-z0-9+/]{43}=$/.test(raw.trim()) ? Buffer.from(raw.trim(), "base64") : null;
+  let key: Buffer;
+  if (decoded && decoded.length === 32) key = decoded;
+  else if (raw.length >= 40) key = Buffer.from(hkdfSync("sha256", raw, "steuerklar-kek-salt-v1", "steuerklar kek", 32));
+  else throw new Error("DATA_ENCRYPTION_KEY muss 32 Byte (Base64) oder eine Zufallszeichenkette mit mindestens 40 Zeichen sein");
   cachedKek = key;
   return key;
 }
