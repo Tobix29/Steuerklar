@@ -105,7 +105,7 @@ export default function Ergebnis() {
       </Section>
 
       {r.weitereEinkuenfte.length > 0 && (
-        <Section title="Weitere Einkünfte (E1)">
+        <Section title={r.e1Erforderlich ? "Weitere Einkünfte (E1)" : "Weitere Einkünfte"}>
           {r.weitereEinkuenfte.map((l, i) => (
             <Row key={`${l.label}-${i}`} label={l.label} sublabel={l.hint} value={eur(l.amount)} strong={l.label.startsWith("Einkünfte")} />
           ))}
@@ -133,6 +133,31 @@ export default function Ergebnis() {
         <Row label="Bereits bezahlte Lohnsteuer" sublabel="KZ 260" value={eur(r.anrechenbareLohnsteuer)} />
         <Row label={refund >= 0 ? "Gutschrift" : "Nachforderung"} value={eur(Math.abs(refund))} strong valueColor={refund >= 0 ? c.green : c.red} />
       </Section>
+
+      {r.immoESt && (
+        <Section title="Immobilienertragsteuer" footer={r.immoESt.regelGuenstiger ? "Die Regelbesteuerung ist günstiger – die Differenz ist in der Gutschrift enthalten." : undefined}>
+          {r.immoESt.lines.map((l, i) => (
+            <Row key={`immo-${i}`} label={l.label} sublabel={l.hint} value={eur(l.amount)} />
+          ))}
+          <Row label="ImmoESt gesamt" value={eur(r.immoESt.steuer)} strong />
+          <Row label="Vom Notar abgeführt" value={eur(r.immoESt.abgefuehrt)} />
+        </Section>
+      )}
+
+      {r.umsatzsteuer && (
+        <Section title="Umsatzsteuer (eigene Erklärung U1)" footer="Die Umsatzsteuer ist nicht Teil der Einkommensteuer-Gutschrift.">
+          <Row
+            label={r.umsatzsteuer.kleinunternehmer ? "Kleinunternehmer:in – keine USt" : "Umsatzsteuerpflichtig"}
+            sublabel="Umsatz / Kleinunternehmergrenze"
+            value={`${eur(r.umsatzsteuer.umsatz, 0)} / ${eur(r.umsatzsteuer.grenze, 0)}`}
+          />
+          {!r.umsatzsteuer.kleinunternehmer &&
+            r.umsatzsteuer.lines.map((l, i) => <Row key={`ust-${i}`} label={l.label} sublabel={l.hint} value={eur(l.amount)} />)}
+          {!r.umsatzsteuer.kleinunternehmer && (
+            <Row label={r.umsatzsteuer.zahllast >= 0 ? "Zahllast" : "Gutschrift"} value={eur(Math.abs(r.umsatzsteuer.zahllast))} strong />
+          )}
+        </Section>
+      )}
 
       {r.formular.length > 0 && (
         <Section

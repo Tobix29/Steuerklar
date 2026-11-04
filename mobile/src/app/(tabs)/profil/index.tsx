@@ -6,6 +6,7 @@ import { BUNDESLAENDER, WK_LABELS, type WkKategorie } from "~/lib/labels";
 import { useColors } from "~/lib/theme";
 import { YEAR_PARAMS, type TaxCase } from "~/lib/types";
 import { WeitereEinkuenfte } from "~/components/WeitereEinkuenfte";
+import { AuslandImmo } from "~/components/AuslandImmo";
 import { behinderungPauschbetrag } from "@core/tax/calculate";
 
 const WK_OPTIONS = (Object.keys(WK_LABELS) as WkKategorie[]).map((k) => ({ value: k, label: WK_LABELS[k] }));
@@ -151,10 +152,17 @@ export default function Profil() {
       <Section title="Kapitalerträge" footer="Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück – Steuerklar rechnet, ob es sich lohnt.">
         <MoneyRow label="Erträge mit 27,5 % KESt" sublabel="Dividenden, Fonds, Kursgewinne" value={data.kapital.ertraege275} onChange={(v) => set((d) => void (d.kapital.ertraege275 = v))} />
         <MoneyRow label="Zinsen mit 25 % KESt" sublabel="Sparbuch, Festgeld" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />
+        <MoneyRow
+          label="Verluste aus anderen Depots"
+          sublabel="Kursverluste, die die Bank nicht verrechnet hat"
+          value={data.kapital.verluste275}
+          onChange={(v) => set((d) => void (d.kapital.verluste275 = v))}
+        />
         <MoneyRow label="Bereits abgezogene KESt" value={data.kapital.kestBezahlt} onChange={(v) => set((d) => void (d.kapital.kestBezahlt = v))} />
       </Section>
 
       <WeitereEinkuenfte data={data} set={set} year={year} />
+      <AuslandImmo data={data} set={set} />
 
       <Section title="Werbungskosten" footer="Am einfachsten: Rechnungen unter „Belege“ fotografieren. Bis 132 € gilt automatisch die Pauschale.">
         {data.werbungskosten.map((w, i) =>

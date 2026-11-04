@@ -15,7 +15,7 @@ const neuerBetrieb = (): Betrieb => ({
   id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0,
 });
 
-/** Vermietung (E1b) und Selbständig/Gewerbe (E1a) – Hauptfelder; Instandsetzungen u. ä. in der Web-Version. */
+/** Vermietung (E1b) und Selbständig/Gewerbe (E1a) inkl. Instandsetzungen und Umsatzsteuer. */
 export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn: (d: TaxCase) => void) => void; year: TaxYear }) {
   const c = useColors();
   const p = YEAR_PARAMS[year];
@@ -34,11 +34,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
         const afa = gebaeudeAfa(o, year);
         const upd = (fn: (x: Mietobjekt) => void) => set((d) => fn(d.mietobjekte[i]!));
         return (
-          <Section
-            key={o.id}
-            title={`🏠 Vermietung ${i + 1}`}
-            footer={o.instandsetzungen.length ? `${o.instandsetzungen.length} Instandsetzung(en) – Bearbeiten in der Web-Version.` : "Instandsetzungen (Verteilung auf 15 Jahre) trägst du in der Web-Version ein."}
-          >
+          <Section key={o.id} title={`🏠 Vermietung ${i + 1}`}>
             <TextRow label="Bezeichnung" value={o.bezeichnung} placeholder="z. B. Wohnung Graz" onChangeText={(v) => upd((x) => void (x.bezeichnung = v.slice(0, 200)))} />
             <MoneyRow label="Mieteinnahmen" sublabel="netto, inkl. weiterverrechneter Betriebskosten" value={o.einnahmen} onChange={(v) => upd((x) => void (x.einnahmen = v))} />
             <MoneyRow label="Kaufpreis / Herstellungskosten" sublabel="inkl. Grund und Nebenkosten" value={o.anschaffungskosten} onChange={(v) => upd((x) => void (x.anschaffungskosten = v))} />
@@ -63,6 +59,19 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
             <MoneyRow label="Instandhaltung" sublabel="laufende Reparaturen" value={o.instandhaltung} onChange={(v) => upd((x) => void (x.instandhaltung = v))} />
             <MoneyRow label="Betriebskosten & Verwaltung" value={o.betriebskosten} onChange={(v) => upd((x) => void (x.betriebskosten = v))} />
             <MoneyRow label="Sonstige Werbungskosten" value={o.sonstigeWerbungskosten} onChange={(v) => upd((x) => void (x.sonstigeWerbungskosten = v))} />
+            {o.instandsetzungen.map((inst, j) => (
+              <View key={inst.id}>
+                <NumberRow label={`Instandsetzung ${j + 1}: Jahr`} sublabel="wird auf 15 Jahre verteilt" value={inst.jahr} max={2100} onChange={(v) => upd((x) => void (x.instandsetzungen[j]!.jahr = Math.max(1990, v)))} />
+                <MoneyRow label={`Instandsetzung ${j + 1}: Betrag`} sublabel={`davon ${year}: ${eur(year >= inst.jahr && year < inst.jahr + 15 ? inst.betrag / 15 : 0)}`} value={inst.betrag} onChange={(v) => upd((x) => void (x.instandsetzungen[j]!.betrag = v))} />
+                <Row label="Instandsetzung entfernen" destructive onPress={() => upd((x) => void x.instandsetzungen.splice(j, 1))} />
+              </View>
+            ))}
+            <Row label="+ Instandsetzung" sublabel="Fenster, Heizung, Leitungen – größere Sanierungen" onPress={() => upd((x) => void x.instandsetzungen.push({ id: uid(), jahr: year, betrag: 0 }))} />
+            <View style={{ padding: 12, gap: 8 }}>
+              <Text style={{ color: c.text, fontSize: 15 }}>Umsatzsteuer</Text>
+              <Segmented value={o.ustSatz} onChange={(v) => upd((x) => void (x.ustSatz = v))} options={[{ value: 10, label: "10 % Wohnung" }, { value: 20, label: "20 %" }, { value: 0, label: "frei" }]} />
+            </View>
+            <MoneyRow label="Vorsteuer" sublabel="nur ohne Kleinunternehmerbefreiung" value={o.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
             <Row label={r.ergebnis >= 0 ? `Überschuss ${year}` : `Verlust ${year}`} value={eur(r.ergebnis)} strong />
             <Row label="Objekt entfernen" destructive onPress={() => set((d) => void d.mietobjekte.splice(i, 1))} />
           </Section>
@@ -97,6 +106,11 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               <SwitchRow label="Dienstleistungsbetrieb" sublabel="20 % statt 45 % Pauschale" value={b.dienstleistung} onValueChange={(v) => upd((x) => void (x.dienstleistung = v))} />
             )}
             <MoneyRow label="SVS-Beiträge" sublabel="immer zusätzlich absetzbar" value={b.sozialversicherung} onChange={(v) => upd((x) => void (x.sozialversicherung = v))} />
+            <View style={{ padding: 12, gap: 8 }}>
+              <Text style={{ color: c.text, fontSize: 15 }}>Umsatzsteuer-Satz</Text>
+              <Segmented value={b.ustSatz} onChange={(v) => upd((x) => void (x.ustSatz = v))} options={[{ value: 20, label: "20 %" }, { value: 13, label: "13 %" }, { value: 10, label: "10 %" }, { value: 0, label: "frei" }]} />
+            </View>
+            <MoneyRow label="Vorsteuer" sublabel="nur ohne Kleinunternehmerbefreiung" value={b.vorsteuer} onChange={(v) => upd((x) => void (x.vorsteuer = v))} />
             {b.gewinnermittlung === "ear" && b.einnahmen - b.ausgaben - b.sozialversicherung > p.gewinnfreibetrag.bis && (
               <MoneyRow
                 label="Begünstigte Investitionen"
@@ -114,6 +128,12 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
       {data.betriebe.length > 0 && (
         <Section footer="Noch nicht verrechnete betriebliche Verluste aus Vorjahren laut Bescheid.">
           <MoneyRow label="Verlustvortrag" value={data.verlustvortrag} onChange={(v) => set((d) => void (d.verlustvortrag = v))} />
+        </Section>
+      )}
+
+      {(data.mietobjekte.length > 0 || data.betriebe.length > 0) && (
+        <Section title="Umsatzsteuer" footer={`Kleinunternehmergrenze ${year >= 2025 ? "55.000 € brutto" : "35.000 € netto"}. Mit Verzicht verrechnest du Umsatzsteuer und bekommst die Vorsteuer zurück (bindet 5 Jahre).`}>
+          <SwitchRow label="Auf Kleinunternehmerbefreiung verzichten" value={data.ustVerzicht} onValueChange={(v) => set((d) => void (d.ustVerzicht = v))} />
         </Section>
       )}
 
