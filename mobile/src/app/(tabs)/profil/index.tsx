@@ -149,6 +149,10 @@ export default function Profil() {
         )}
       </Section>
 
+      <Section title="AMS-Bezüge" footer="Steuerfrei, aber das übrige Gehalt wird auf ein ganzes Jahr hochgerechnet (§ 3 Abs. 2 EStG).">
+        <MoneyRow label="Vom AMS ausbezahlt" sublabel="Arbeitslosengeld, Notstandshilfe, Weiterbildungsgeld" value={data.ams.betrag} onChange={(v) => set((d) => void (d.ams.betrag = v))} />
+        {data.ams.betrag > 0 && <NumberRow label="Monate mit AMS-Bezug" value={data.ams.monate} max={12} onChange={(v) => set((d) => void (d.ams.monate = Math.min(12, v)))} />}
+      </Section>
       <Section title="Kapitalerträge" footer="Bei niedrigem Einkommen bekommst du mit der Regelbesteuerungsoption KESt zurück – Steuerklar rechnet, ob es sich lohnt.">
         <MoneyRow label="Erträge mit 27,5 % KESt" sublabel="Dividenden, Fonds, Kursgewinne" value={data.kapital.ertraege275} onChange={(v) => set((d) => void (d.kapital.ertraege275 = v))} />
         <MoneyRow label="Zinsen mit 25 % KESt" sublabel="Sparbuch, Festgeld" value={data.kapital.ertraege25} onChange={(v) => set((d) => void (d.kapital.ertraege25 = v))} />

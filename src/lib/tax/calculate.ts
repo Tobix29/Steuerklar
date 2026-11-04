@@ -211,6 +211,20 @@ export function calculate(input: TaxCase): TaxResult {
   }
   if (input.ausland.length) pflicht.push("Auslandseinkünfte – die Veranlagung ist verpflichtend (Formular L1i bzw. E1).");
 
+  /* ---- AMS-Bezüge: Hochrechnung (§3 Abs 2 EStG) ----
+   * Die Bezüge selbst sind steuerfrei. Die laufenden Aktivbezüge außerhalb des AMS-Zeitraums werden auf ein Jahr hochgerechnet
+   * und erhöhen nur den Steuersatz. Kontrollrechnung: Die Steuer darf nicht höher sein, als wenn die AMS-Bezüge steuerpflichtig wären. */
+  const amsBetrag = input.ams.betrag;
+  const amsMonate = input.ams.monate;
+  let amsFiktiv = 0;
+  if (amsBetrag > 0 && amsMonate > 0 && amsMonate < 12 && hasEmployment) {
+    const aktivLaufend = cents(aktiv.reduce((a, x) => a + x.kz245 + x.kz718, 0));
+    amsFiktiv = cents((aktivLaufend * amsMonate) / (12 - amsMonate));
+    weitere.push({ label: "AMS-Bezüge, steuerfrei (Hochrechnung für den Steuersatz)", amount: amsFiktiv, hint: `${amsMonate} Monate · ${eur(amsBetrag)} € ausbezahlt` });
+    formular.push({ formular: "L1", kz: "—", label: "AMS-Bezüge – meldet das AMS automatisch, nichts eintragen", value: `€ ${eur(amsBetrag)}` });
+  }
+  let amsKontrolle = false;
+
   const gde = cents(einkuenfte + neben - vfb + anrechnungEink);
   const e1 = input.mietobjekte.length > 0 || input.betriebe.length > 0;
   if (neben > VERANLAGUNGSFREIBETRAG && (hasEmployment || hasPension))
@@ -296,7 +310,16 @@ export function calculate(input: TaxCase): TaxResult {
 
   function steuerAus(eink: number, collect: boolean) {
     // Progressionsvorbehalt: Durchschnittssteuersatz inkl. steuerfreier Auslandseinkünfte auf das Inlandseinkommen
-    const tarif = befreit > 0 && eink > 0 ? cents((tarifsteuer(eink + befreit, p) * eink) / (eink + befreit)) : tarifsteuer(eink, p);
+    const prog = befreit + amsFiktiv;
+    let tarif = prog > 0 && eink > 0 ? cents((tarifsteuer(eink + prog, p) * eink) / (eink + prog)) : tarifsteuer(eink, p);
+    if (amsFiktiv > 0 && eink > 0) {
+      const mitAms = eink + amsBetrag;
+      const kontroll = befreit > 0 ? cents((tarifsteuer(mitAms + befreit, p) * mitAms) / (mitAms + befreit)) : tarifsteuer(mitAms, p);
+      if (kontroll < tarif) {
+        tarif = kontroll;
+        if (collect) amsKontrolle = true;
+      }
+    }
     const abs: Line[] = [];
     const neg: Line[] = [];
     const form: FormEntry[] = [];
@@ -527,7 +550,20 @@ export function calculate(input: TaxCase): TaxResult {
   if (erstattung > 0 && pflicht.length === 0 && hasEmployment)
     hinweise.push("Gibst du keine Erklärung ab, kann die antragslose Arbeitnehmerveranlagung greifen – Werbungskosten und Familienbonus werden dann aber nicht berücksichtigt.");
 
+  let ams: TaxResult["ams"] = null;
+  if (amsFiktiv > 0) {
+    const ohne = calculate({ ...input, ams: { betrag: 0, monate: 0 } });
+    const mehrsteuer = cents(ohne.erstattung - erstattung);
+    ams = { hochrechnung: amsFiktiv, kontrollrechnung: amsKontrolle, mehrsteuer };
+    if (mehrsteuer > 0)
+      hinweise.push(
+        `Wegen der AMS-Bezüge wird dein Einkommen hochgerechnet – das kostet dich ${eur(mehrsteuer)} €${amsKontrolle ? " (begrenzt durch die Kontrollrechnung)" : ""}. ` +
+          (pflicht.length ? "Da eine Pflichtveranlagung vorliegt, ist das nicht vermeidbar." : "Die Arbeitnehmerveranlagung ist freiwillig: Lohnt sie sich nicht, musst du sie nicht abgeben (oder kannst den Antrag per Beschwerde zurückziehen)."),
+      );
+  }
+
   return {
+    ams,
     year,
     provisional: p.unverified.length > 0,
     unverified: [...p.unverified, ...UNVERIFIED_GLOBAL],

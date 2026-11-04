@@ -172,6 +172,10 @@ export const TaxCaseSchema = z.object({
   betriebe: z.array(BetriebSchema).max(10).default([]),
   /** Noch nicht verrechnete betriebliche Verluste aus Vorjahren (Verlustvortrag, §18 Abs 6 EStG) */
   verlustvortrag: optMoney,
+  /** AMS-Bezüge (Arbeitslosengeld, Notstandshilfe, Weiterbildungsgeld …): steuerfrei, aber Hochrechnung nach §3 Abs 2 EStG */
+  ams: z
+    .object({ betrag: optMoney, monate: z.number().int().min(0).max(12).default(0) })
+    .default({ betrag: 0, monate: 0 }),
   /** Pension: Antrag auf erhöhten Pensionistenabsetzbetrag (Ehe/Partnerschaft, geringe Partnereinkünfte) */
   pensionErhoeht: z.boolean().default(false),
   /** Kapitalerträge mit Sondersteuersatz und bereits einbehaltene KESt (für die Regelbesteuerungsoption) */
@@ -301,6 +305,8 @@ export interface TaxResult {
   } | null;
   /** Immobilienertragsteuer aus privaten Grundstücksverkäufen */
   immoESt: { lines: Line[]; steuer: number; abgefuehrt: number; regelGuenstiger: boolean } | null;
+  /** Hochrechnung wegen AMS-Bezügen: fiktiver Betrag, ob die Kontrollrechnung greift, Mehrsteuer gegenüber ohne Hochrechnung */
+  ams: { hochrechnung: number; kontrollrechnung: boolean; mehrsteuer: number } | null;
   /** Ergebnis der Günstigerprüfung für Kapitalerträge */
   kapitalOption: { empfohlen: boolean; erstattung: number; mehrsteuer: number; verlustausgleich: number } | null;
   hinweise: string[];

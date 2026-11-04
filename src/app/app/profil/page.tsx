@@ -75,7 +75,7 @@ function Row({ label, help, children }: { label: string; help?: string; children
 }
 
 export default function Profil() {
-  const { data, update, year } = useCase();
+  const { data, update, year, result } = useCase();
   if (!data) return <div className="shimmer" style={{ height: 400, borderRadius: 18 }} />;
   const p = YEAR_PARAMS[year];
   const set = (fn: (d: TaxCase) => void) => update(fn);
@@ -273,6 +273,24 @@ export default function Profil() {
           </div>
         </section>
       )}
+
+      <section>
+        <p className="section-label">Arbeitslos oder Weiterbildung (AMS)</p>
+        <div className="list">
+          <Row label="Vom AMS ausbezahlt" help="Arbeitslosengeld, Notstandshilfe, Weiterbildungs- oder Bildungsteilzeitgeld – steht in der AMS-Bezugsbestätigung">
+            <MoneyInput ariaLabel="AMS-Bezüge" value={data.ams.betrag} onChange={(v) => set((d) => void (d.ams.betrag = v))} />
+          </Row>
+          {data.ams.betrag > 0 && (
+            <Row label="Monate mit AMS-Bezug">
+              <NumberInput ariaLabel="Monate mit AMS-Bezug" value={data.ams.monate} max={12} suffix="Mon." onChange={(v) => set((d) => void (d.ams.monate = Math.min(12, v)))} />
+            </Row>
+          )}
+        </div>
+        <p className="tiny muted" style={{ margin: "8px 0 0 16px" }}>
+          AMS-Bezüge sind steuerfrei, aber das Finanzamt rechnet dein übriges Gehalt auf ein ganzes Jahr hoch (§ 3 Abs. 2 EStG).
+          {result?.ams && result.ams.mehrsteuer > 0 ? ` Das kostet dich hier ${eur(result.ams.mehrsteuer)}.` : ""}
+        </p>
+      </section>
 
       <section>
         <p className="section-label">Kapitalerträge (Sparbuch, Depot)</p>
