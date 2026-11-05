@@ -66,7 +66,7 @@ function App() {
     <>
       <div className="demo-banner">Demo-Version · Steuerausgleich Österreich · deine Daten bleiben privat</div>
       {Page ? (
-        <AppShell email="Demo-Konto">
+        <AppShell email="Demo-Konto" kanzlei>
           <Page />
         </AppShell>
       ) : (

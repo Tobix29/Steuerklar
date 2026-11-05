@@ -18,7 +18,7 @@ export default function Overview() {
     { href: "/app/profil", title: "Über dich", text: "Arbeitsweg, Telearbeit, Kinder", done: hasProfile },
     { href: "/app/belege", title: "Lohnzettel (L16)", text: "PDF aus FinanzOnline oder Foto", done: hasIncome },
     { href: "/app/belege", title: "Weitere Belege", text: "Arbeitsmittel, Fortbildung, Arzt", done: documentCount > 1 || hasDeductions },
-    { href: "/app/ergebnis", title: "In FinanzOnline abgeben", text: "Kennzahlen übertragen", done: false },
+    { href: "/app/abgabe", title: "Abgeben lassen", text: "Kanzlei prüft und übermittelt", done: false },
   ];
   const done = steps.filter((s) => s.done).length;
   const refund = result.erstattung;

@@ -51,6 +51,12 @@ export default function Ergebnis() {
         </div>
       </header>
 
+      <Link href="/app/abgabe" className="list-item card" style={{ color: "var(--text)" }}>
+        <span className="icon-tile">📤</span>
+        <span className="grow"><strong>Abgeben lassen</strong><div className="tiny muted">Deine Partner-Kanzlei prüft und bringt die Erklärung über FinanzOnline ein – du gibst nur frei.</div></span>
+        <span className="muted">›</span>
+      </Link>
+
       {!hasIncome && <div className="notice notice-blue">Lade zuerst deinen Lohnzettel (L16) hoch, um ein Ergebnis zu erhalten.</div>}
 
       <section className="card card-lg center">

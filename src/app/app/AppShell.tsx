@@ -13,6 +13,7 @@ const NAV: { href: string; label: string; icon: string; nurDesktop?: boolean }[]
   { href: "/app/assistent", label: "Fragen", icon: "💬" },
   { href: "/app/finanzamt", label: "Finanzamt", icon: "🏛️" },
   { href: "/app/buchhaltung", label: "Buchhaltung", icon: "📒", nurDesktop: true },
+  { href: "/app/abgabe", label: "Abgeben", icon: "📤", nurDesktop: true },
   { href: "/app/konto", label: "Konto", icon: "⚙️" },
 ];
 
@@ -38,7 +39,7 @@ function SaveIndicator() {
   return <span className={`badge ${c}`}>{saveState === "saved" ? "✓ " : ""}{t}</span>;
 }
 
-export function AppShell({ email, children }: { email: string; children: React.ReactNode }) {
+export function AppShell({ email, kanzlei = false, children }: { email: string; kanzlei?: boolean; children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const isActive = (href: string) => (href === "/app" ? path === "/app" : path.startsWith(href));
@@ -58,7 +59,7 @@ export function AppShell({ email, children }: { email: string; children: React.R
             Steuerklar
           </Link>
           <nav className="stack" style={{ "--gap": "2px" } as React.CSSProperties} aria-label="App-Navigation">
-            {NAV.map((n) => (
+            {[...NAV, ...(kanzlei ? [{ href: "/app/kanzlei", label: "Kanzlei", icon: "⚖️" }] : [])].map((n) => (
               <Link key={n.href} href={n.href} className="side-link" aria-current={isActive(n.href) ? "page" : undefined}>
                 <span className="ico" aria-hidden="true">{n.icon}</span>
                 {n.label}
