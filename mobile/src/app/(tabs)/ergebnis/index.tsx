@@ -71,6 +71,10 @@ export default function Ergebnis() {
         {r.provisional && <Text style={[t.muted, { fontSize: 12, marginTop: 8 }]}>Prognose – einzelne Parameter noch nicht amtlich verifiziert.</Text>}
       </Card>
 
+      <Section>
+        <Row icon="📤" label="Abgeben lassen" sublabel="Partner-Kanzlei prüft und übermittelt – du gibst nur frei" chevron onPress={() => router.navigate("/mehr/abgabe")} />
+      </Section>
+
       {spar && spar.contributions.length > 0 && (
         <Section title="Spar-Check · was dir was bringt">
           {spar.contributions.map((x) => (

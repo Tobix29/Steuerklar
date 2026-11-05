@@ -68,6 +68,18 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 **Bleibt der Steuerberatung vorbehalten (WTBG 2017):** Vertretung vor Finanzamt und Bundesfinanzgericht, Außenprüfungen,
 Finanzstrafverfahren, Haftung für die Richtigkeit. Die App weist bei solchen Schreiben ausdrücklich darauf hin.
 
+## Abgabe über Partner-Kanzlei
+
+Steuerklar erstellt die Erklärung, eine berufsberechtigte Partner-Kanzlei prüft und bringt sie über FinanzOnline ein (WTBG: Vertretung ist Steuerberater:innen vorbehalten).
+
+1. **Kanzlei einrichten:** Server-Variable `KANZLEI_SETUP_TOKEN` setzen (≥ 16 Zeichen) und nur an Partnerkanzleien weitergeben. Das Kanzlei-Konto aktiviert die Zwei-Faktor-Anmeldung und legt unter `/app/kanzlei` die Kanzlei an → erhält einen **Kanzlei-Code**.
+2. **Mandant:in** (`/app/abgabe`): Kanzlei-Code eingeben → Vollmacht erteilen → Prüfliste ansehen → **freigeben**. Die Freigabe erzeugt einen unveränderlichen Snapshot (Fall, Ergebnis, Belegliste) mit SHA-256-Prüfsumme.
+3. **Kanzlei** (`/app/kanzlei`): Prüfliste, Kennzahlen je Formular, Ausfüllhilfe-PDF, Übermittlungsdatei; Rückfrage stellen → Mandant:in korrigiert und gibt erneut frei (Version 2 …) → nach der Einbringung in FinanzOnline die **Referenz der Übermittlungsbestätigung** eintragen → „Bescheid eingelangt“.
+
+Sicherheit: eigener Datenschlüssel je Abgabe (Envelope Encryption), Kanzlei-Zugriff nur mit aktiver Vollmacht (nach Übermittlung bleibt der Stand für die Aufbewahrung sichtbar), Kanzlei-Endpunkte verlangen 2FA, alle Aktionen im Audit-Log, Widerruf der Vollmacht zieht offene Abgaben zurück.
+
+**Offen:** Die Übermittlungsdatei ist ein eigenes Format (Kennzahlen je Formular) – für die automatische Übermittlung per FinanzOnline-Webservice (Datei-Upload, Session-Webservice, Databox-Abruf) braucht es einen Adapter auf Basis der aktuellen BMF-Schemata. Die Vollmacht muss die Kanzlei zusätzlich in FinanzOnline eintragen. Mehrere Mitarbeiter:innen je Kanzlei sind im Datenmodell vorgesehen, aber noch nicht in der Oberfläche.
+
 ## Vor dem Produktivbetrieb (offen)
 
 1. **Recht:** Positionierung als Selbsthilfe-Software (keine Steuerberatung i. S. d. WTBG 2017) anwaltlich prüfen lassen; AGB,
@@ -80,7 +92,7 @@ Finanzstrafverfahren, Haftung für die Richtigkeit. Die App weist bei solchen Sc
    Nicht abgedeckt: Jahressechstel-Überschreitung, Bilanzierung (doppelte Buchhaltung), GmbH/Körperschaftsteuer, Lohnverrechnung
    für Dienstnehmer:innen. E1a-Kennzahlen sind nur für Erlöse (9040), Waren (9100), Fremdleistungen (9110) und Personal (9120) hinterlegt – die übrigen ändert das BMF je Jahr und müssen gegen das Formular geprüft werden.
 
-4. **Übermittlung:** Eine direkte Abgabe in FinanzOnline durch Drittsoftware ist für Privatpersonen nicht vorgesehen – die App liefert
-   eine Ausfüllhilfe mit Kennzahlen. Option: Kooperation mit Steuerberatungskanzlei (Vollmacht) für die Übermittlung.
+4. **Übermittlung:** Umgesetzt über Partner-Kanzlei (siehe oben). Partnervertrag, Haftung, Honorarmodell und Datenschutz
+   (Auftragsverarbeitung bzw. gemeinsame Verantwortung zwischen Betreiber und Kanzlei) rechtlich gestalten lassen.
 5. **Infrastruktur:** PostgreSQL in EU-Region, Master Key in KMS (mit Rotation), Rate Limiting über Redis, Pen-Test, Monitoring.
 6. **Native Apps:** siehe `mobile/README.md` (EAS Build, Store-Einreichung, Certificate Pinning).

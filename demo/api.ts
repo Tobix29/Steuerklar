@@ -15,6 +15,10 @@ import { pdfToImages } from "./pdf";
 import { fristIcs, termineIcs } from "@/lib/tax/calendar";
 import { termine } from "@/lib/tax/planer";
 import { alleBuchungen, journalCsv } from "@/lib/tax/journal";
+import {
+  abgeschlossen, AbgabeFehler, erstelleSnapshot, FREIGABE_TEXT, freigabeMoeglich, kennzahlen, STATUS, uebergang, uebermittlungsdatei, VOLLMACHT_TEXT,
+  type AbgabeDaten, type Aktion, type Rolle,
+} from "@/lib/abgabe/abgabe";
 import { buchungInstructions, BuchungScanSchema, sanitizeBuchung, type BuchungScan } from "@/lib/ai/buchung";
 import { BESCHEID_INSTRUCTIONS, BescheidSchema, compareBescheid, postInstructions, PostSchema, type Bescheid, type BescheidPruefung, type Post } from "@/lib/ai/finanzamt";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
@@ -94,7 +98,122 @@ ${jsonSchema}`;
   return { extraction: e, demo: true };
 }
 
+
+/* ---------------- Abgabe über die Kanzlei (Demo: Beispiel-Kanzlei im selben Browser) ---------------- */
+const DEMO_KANZLEI = { id: "00000000-0000-4000-8000-000000000001", name: "Beispiel-Kanzlei (Demo)", code: "DEMO-0001" };
+interface DemoVollmacht { id: string; kanzleiId: string; kanzleiName: string; text: string; erteiltAt: number; widerrufenAt: number | null }
+interface AbgabeState { vollmachten: DemoVollmacht[]; abgaben: AbgabeDaten[] }
+
+const kurzDemo = (d: AbgabeDaten) => ({
+  id: d.id, year: d.year, kanzleiName: d.kanzleiName, mandant: d.mandant, status: d.status, statusLabel: STATUS[d.status].label,
+  gutschrift: d.snapshot.result.erstattung, formulare: d.snapshot.formulare,
+  kritisch: d.snapshot.pruefliste.filter((p) => p.stufe === "kritisch").length, pruefen: d.snapshot.pruefliste.filter((p) => p.stufe === "pruefen").length,
+  version: d.snapshot.version, uebermittlung: d.uebermittlung, ungelesen: d.nachrichten.at(-1)?.von ?? null, updatedAt: d.updatedAt,
+});
+
+async function abgabeHandle(method: string, url: URL, body: unknown): Promise<unknown | undefined> {
+  const path = url.pathname;
+  if (!path.startsWith("/api/vollmacht") && !path.startsWith("/api/abgaben") && !path.startsWith("/api/kanzlei")) return undefined;
+  const s = await store();
+  const st: AbgabeState = (await s.getKv<AbgabeState>("abgabe")) ?? { vollmachten: [], abgaben: [] };
+  const save = () => s.setKv("abgabe", st);
+  const aktiv = () => st.vollmachten.find((v) => !v.widerrufenAt) ?? null;
+  const b = (body ?? {}) as Record<string, unknown>;
+
+  if (path === "/api/kanzlei/suche") {
+    if (String(url.searchParams.get("code") ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "") !== "DEMO0001") throw new ApiError(404, "Keine Kanzlei mit diesem Code gefunden. In der Demo: DEMO-0001");
+    return { kanzlei: { id: DEMO_KANZLEI.id, name: DEMO_KANZLEI.name } };
+  }
+  if (path === "/api/vollmacht") {
+    if (method === "GET") return { vollmachten: st.vollmachten };
+    if (method === "POST") {
+      if (String(b.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "") !== "DEMO0001") throw new ApiError(404, "Keine Kanzlei mit diesem Code gefunden.");
+      if (aktiv()) throw new ApiError(409, "Diese Kanzlei hat bereits eine Vollmacht.");
+      const v = { id: crypto.randomUUID(), kanzleiId: DEMO_KANZLEI.id, kanzleiName: DEMO_KANZLEI.name, text: VOLLMACHT_TEXT(DEMO_KANZLEI.name), erteiltAt: Date.now(), widerrufenAt: null };
+      st.vollmachten.unshift(v);
+      await save();
+      return { vollmacht: v };
+    }
+    const v = st.vollmachten.find((x) => x.id === b.id && !x.widerrufenAt);
+    if (!v) throw new ApiError(404, "Vollmacht nicht gefunden.");
+    v.widerrufenAt = Date.now();
+    for (const a of st.abgaben)
+      if (!abgeschlossen(a.status) && a.status !== "zurueckgezogen") {
+        a.status = "zurueckgezogen";
+        a.ereignisse.push({ at: Date.now(), von: "system", text: "Vollmacht widerrufen – Abgabe zurückgezogen." });
+      }
+    await save();
+    return { ok: true };
+  }
+  if (path === "/api/abgaben") {
+    const year = parseYear(method === "GET" ? url.searchParams.get("year") : String(b.year));
+    if (method === "GET")
+      return { abgaben: st.abgaben.filter((a) => a.year === year).map((d) => ({ ...kurzDemo(d), ereignisse: d.ereignisse, nachrichten: d.nachrichten, pruefliste: d.snapshot.pruefliste, hash: d.snapshot.hash, freigabe: d.freigabe })) };
+    if (!aktiv()) throw new ApiError(403, "Erteile der Kanzlei zuerst eine Vollmacht.");
+    const c = await s.getCase(year);
+    const r = calculate(c);
+    const belege = (await s.listDocs(year)).map((d) => ({ id: d.id, fileName: d.fileName, typ: d.extraction.documentType, betrag: d.extraction.beleg?.betrag ?? d.extraction.lohnzettel?.kz210 ?? null, uebernommen: d.applied }));
+    const alt = st.abgaben.find((a) => a.year === year) ?? null;
+    if (alt && abgeschlossen(alt.status)) throw new ApiError(409, `Die Abgabe ${year} ist bereits abgeschlossen.`);
+    const status = uebergang(alt?.status ?? null, "freigeben", "mandant");
+    const snapshot = await erstelleSnapshot(c, r, belege, (alt?.snapshot.version ?? 0) + 1);
+    if (!freigabeMoeglich(snapshot)) throw new ApiError(422, "Vor der Freigabe sind kritische Punkte zu klären: " + snapshot.pruefliste.filter((p) => p.stufe === "kritisch").map((p) => p.text).join(" "));
+    const now = Date.now();
+    const d: AbgabeDaten = {
+      id: alt?.id ?? crypto.randomUUID(), year, kanzleiId: DEMO_KANZLEI.id, kanzleiName: DEMO_KANZLEI.name,
+      mandant: { name: [c.firstName, c.lastName].filter(Boolean).join(" ") || "Demo-Mandant:in", email: "demo@steuerklar.invalid" },
+      status, snapshot, freigabe: { at: now, text: FREIGABE_TEXT(year, DEMO_KANZLEI.name), hash: snapshot.hash }, uebermittlung: null,
+      ereignisse: [...(alt?.ereignisse ?? []), { at: now, von: "mandant", text: alt ? `Neue Version ${snapshot.version} freigegeben.` : "Zur Abgabe freigegeben." }],
+      nachrichten: alt?.nachrichten ?? [], createdAt: alt?.createdAt ?? now, updatedAt: now,
+    };
+    st.abgaben = [d, ...st.abgaben.filter((a) => a.id !== d.id)];
+    await save();
+    return { abgabe: kurzDemo(d) };
+  }
+  if (path === "/api/kanzlei") {
+    const aktivIds = aktiv() ? 1 : 0;
+    return { kanzlei: { ...DEMO_KANZLEI, rolle: "inhaber" }, mandanten: aktivIds, abgaben: st.abgaben.filter((a) => aktiv() || abgeschlossen(a.status)).map(kurzDemo) };
+  }
+  const m = path.match(/^\/api\/(abgaben|kanzlei\/abgaben)\/([0-9a-f-]{36})$/);
+  if (m) {
+    const rolle: Rolle = m[1] === "abgaben" ? "mandant" : "kanzlei";
+    const d = st.abgaben.find((a) => a.id === m[2]);
+    if (!d) throw new ApiError(404, "Abgabe nicht gefunden.");
+    if (rolle === "kanzlei" && !aktiv() && !abgeschlossen(d.status)) throw new ApiError(403, "Die Vollmacht wurde widerrufen.");
+    if (method === "GET" && rolle === "kanzlei") return { abgabe: { ...d, kennzahlen: kennzahlen(d.snapshot.result) } };
+    const a = String(b.aktion ?? "") as Aktion | "nachricht";
+    const text = String(b.text ?? "").trim().slice(0, 4000);
+    const now = Date.now();
+    if (a === "nachricht") {
+      if (!text) throw new ApiError(400, "Nachricht ist leer.");
+      d.nachrichten.push({ at: now, von: rolle, text });
+    } else {
+      try {
+        d.status = uebergang(d.status, a, rolle);
+      } catch (err) {
+        if (err instanceof AbgabeFehler) throw new ApiError(409, err.message);
+        throw err;
+      }
+      if ((a === "rueckfrage" || a === "ablehnen") && !text) throw new ApiError(400, "Bitte einen Text angeben.");
+      if (a === "uebermitteln") {
+        const ref = String(b.referenz ?? "").trim().slice(0, 80);
+        if (!ref) throw new ApiError(400, "Bitte die FinanzOnline-Referenz angeben.");
+        d.uebermittlung = { at: now, referenz: ref };
+      }
+      const label: Record<string, string> = { zurueckziehen: "Abgabe zurückgezogen.", pruefen: "Kanzlei hat mit der Prüfung begonnen.", rueckfrage: "Kanzlei hat eine Rückfrage gestellt.", uebermitteln: `An das Finanzamt übermittelt (Referenz ${d.uebermittlung?.referenz ?? ""}).`, bescheid: "Bescheid ist eingelangt.", ablehnen: "Kanzlei hat das Mandat abgelehnt." };
+      d.ereignisse.push({ at: now, von: rolle, text: label[a] ?? a });
+      if (text) d.nachrichten.push({ at: now, von: rolle, text });
+    }
+    d.updatedAt = now;
+    await save();
+    return { abgabe: kurzDemo(d) };
+  }
+  return undefined;
+}
+
 async function handle(method: string, url: URL, body: unknown): Promise<unknown> {
+  const abg = await abgabeHandle(method, url, body);
+  if (abg !== undefined) return abg;
   const s = await store();
   const path = url.pathname;
 
@@ -229,6 +348,19 @@ export async function download(path: string): Promise<string> {
     if (!b) return "Kein Betrieb angelegt.";
     data = "\uFEFF" + journalCsv(alleBuchungen(b).filter((x) => x.datum.startsWith(`${year}-`)));
     filename = `Journal-${year}.csv`;
+  } else if (/^\/api\/kanzlei\/abgaben\/[0-9a-f-]{36}\/(datei|pdf)$/.test(url.pathname)) {
+    const [, , , , id, art] = url.pathname.split("/");
+    const st = await s.getKv<AbgabeState>("abgabe");
+    const d = st?.abgaben.find((a) => a.id === id);
+    if (!d) return "Abgabe nicht gefunden.";
+    if (art === "datei") {
+      data = uebermittlungsdatei(d);
+      filename = `Abgabe-${d.year}.xml`;
+    } else {
+      const { buildPdf } = await import("@/lib/server/pdf");
+      data = await buildPdf(d.snapshot.case, d.snapshot.result);
+      filename = `Abgabe-${d.year}.pdf`;
+    }
   } else if (url.pathname === "/api/account/export") {
     const years = [];
     for (const y of SUPPORTED_YEARS) years.push({ year: y, case: await s.getCase(y), documents: await s.listDocs(y) });

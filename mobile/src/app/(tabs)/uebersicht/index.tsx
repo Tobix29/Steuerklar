@@ -21,7 +21,7 @@ export default function Uebersicht() {
     { title: "Über dich", text: "Arbeitsweg, Homeoffice, Kinder", done: !!data.firstName, href: "/profil" as const },
     { title: "Lohnzettel (L16)", text: "Foto oder PDF aus FinanzOnline", done: hasLz, href: "/belege" as const },
     { title: "Weitere Belege", text: "Arbeitsmittel, Fortbildung, Arzt", done: documentCount > 1 || hasDeductions, href: "/belege" as const },
-    { title: "Prüfen & abgeben", text: "Kennzahlen für FinanzOnline", done: false, href: "/ergebnis" as const },
+    { title: "Abgeben lassen", text: "Kanzlei prüft und übermittelt", done: false, href: "/mehr/abgabe" as const },
   ];
   const done = steps.filter((s) => s.done).length;
   const refund = result.erstattung;

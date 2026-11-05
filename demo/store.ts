@@ -16,6 +16,9 @@ export interface Store {
   getDoc(id: string): Promise<StoredDocument | null>;
   putDoc(d: StoredDocument): Promise<void>;
   delDoc(id: string): Promise<void>;
+  /** Freier JSON-Speicher (z. B. Abgaben/Vollmachten der Demo) */
+  getKv<T>(key: string): Promise<T | null>;
+  setKv(key: string, value: unknown): Promise<void>;
   clear(): Promise<void>;
 }
 
@@ -63,6 +66,13 @@ async function dbStore(): Promise<Store | null> {
     async delDoc(id) {
       await db.doc(`${base}/doc-${id}`).delete();
     },
+    async getKv<T>(key: string) {
+      const snap = await db.doc(`${base}/kv-${key}`).get();
+      return snap.exists ? (JSON.parse(String(snap.data()?.json)) as T) : null;
+    },
+    async setKv(key, value) {
+      await db.doc(`${base}/kv-${key}`).set({ kind: "kv", json: JSON.stringify(value) });
+    },
     async clear() {
       const snap = await col.get();
       for (const d of snap.docs) await db.doc(`${base}/${d.id}`).delete();
@@ -72,7 +82,7 @@ async function dbStore(): Promise<Store | null> {
 
 function localStore(): Store {
   const KEY = "steuerklar_demo_v1";
-  let mem: { cases: Record<string, TaxCase>; docs: Record<string, StoredDocument> } = { cases: {}, docs: {} };
+  let mem: { cases: Record<string, TaxCase>; docs: Record<string, StoredDocument>; kv?: Record<string, unknown> } = { cases: {}, docs: {} };
   let persistent = true;
   try {
     const raw = localStorage.getItem(KEY);
@@ -112,8 +122,15 @@ function localStore(): Store {
       delete mem.docs[id];
       save();
     },
+    async getKv<T>(key: string) {
+      return ((mem.kv ?? {})[key] as T) ?? null;
+    },
+    async setKv(key, value) {
+      mem.kv = { ...(mem.kv ?? {}), [key]: value };
+      save();
+    },
     async clear() {
-      mem = { cases: {}, docs: {} };
+      mem = { cases: {}, docs: {}, kv: {} };
       save();
     },
   };
