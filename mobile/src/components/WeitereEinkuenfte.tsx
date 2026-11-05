@@ -100,6 +100,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
               chevron
               onPress={() => router.push("/mehr/buchhaltung")}
             />
+            <Row label="🧾 Rechnungen" sublabel={b.rechnungen.length ? `${b.rechnungen.length} Rechnung(en)` : "Ausgangsrechnungen schreiben und als PDF verschicken"} chevron onPress={() => router.push("/mehr/rechnungen")} />
             {!journal && <MoneyRow label="Betriebseinnahmen" sublabel="netto ohne USt" value={b.einnahmen} onChange={(v) => upd((x) => void (x.einnahmen = v))} />}
             <ChoiceRow
               label="Gewinnermittlung"

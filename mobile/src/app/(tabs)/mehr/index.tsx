@@ -3,6 +3,8 @@ import { useRouter } from "expo-router";
 import { Row, Screen, Section } from "~/components/ui";
 import { api } from "~/lib/api";
 import { useCase } from "~/lib/case";
+import { eur } from "~/lib/format";
+import { offenePosten } from "@core/tax/rechnung";
 
 export default function Mehr() {
   const router = useRouter();
@@ -32,6 +34,18 @@ export default function Mehr() {
           sublabel={data?.betriebe.length ? `${anzahl} Buchung(en)` : "Zuerst unter „Über dich“ eine Tätigkeit anlegen"}
           chevron
           onPress={() => router.push("/mehr/buchhaltung")}
+        />
+        <Row
+          label="🧾  Rechnungen"
+          sublabel={(() => {
+            if (!data?.betriebe.length) return "Ausgangsrechnungen mit allen Pflichtangaben";
+            const op = data.betriebe.flatMap((b) => offenePosten(b));
+            const ue = op.filter((o) => o.ueberfaellig);
+            if (!op.length) return "Keine offenen Rechnungen";
+            return `${eur(op.reduce((s, o) => s + o.brutto, 0))} offen${ue.length ? ` · ${eur(ue.reduce((s, o) => s + o.brutto, 0))} überfällig` : ""}`;
+          })()}
+          chevron
+          onPress={() => router.push("/mehr/rechnungen")}
         />
       </Section>
       <Section>

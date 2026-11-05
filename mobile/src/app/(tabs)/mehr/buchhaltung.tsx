@@ -8,7 +8,7 @@ import { useCase } from "~/lib/case";
 import { pickDocument, type Source } from "~/lib/documents";
 import { eur, uid } from "~/lib/format";
 import { useColors } from "~/lib/theme";
-import { E1A_KATEGORIEN, E1A_KEYS, journalSummen, type Buchung, type E1aKategorie } from "@core/tax/journal";
+import { alleBuchungen, E1A_KATEGORIEN, E1A_KEYS, journalSummen, type Buchung, type E1aKategorie } from "@core/tax/journal";
 import type { BuchungScan } from "@core/ai/buchung";
 
 const MONATE = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -82,8 +82,9 @@ export default function Buchhaltung() {
       </Screen>
     );
 
-  const s = journalSummen(betrieb.buchungen, year);
-  const buchungen = betrieb.buchungen.filter((b) => b.datum.startsWith(`${year}-`)).sort((a, b) => b.datum.localeCompare(a.datum));
+  const alle = alleBuchungen(betrieb);
+  const s = journalSummen(alle, year);
+  const buchungen = alle.filter((b) => b.datum.startsWith(`${year}-`)).sort((a, b) => b.datum.localeCompare(a.datum));
   const now = new Date();
   const leer = (): Buchung => ({
     id: uid(),
@@ -191,6 +192,7 @@ export default function Buchhaltung() {
             <Button title="PDF / Datei" variant="secondary" style={{ flex: 1 }} disabled={busy} onPress={() => void scan("pdf")} />
           </View>
           <Button title="+ Manuell buchen" variant="secondary" onPress={() => { setHinweise([]); setMsg(null); setEdit(leer()); }} />
+          <Button title="🧾 Rechnung schreiben" variant="secondary" onPress={() => router.push("/mehr/rechnungen")} />
           {buchungen.length > 0 && <Button title={csvBusy ? "Exportiert …" : "⬇︎ CSV-Export"} variant="secondary" loading={csvBusy} disabled={csvBusy} onPress={() => void exportCsv()} />}
           <Text style={[t.muted, { fontSize: 12 }]}>
             Sobald du buchst, ersetzen die Buchungen die von Hand eingetragenen Summen (Einnahmen, Ausgaben, Vorsteuer, SVS). Belege 7 Jahre aufbewahren (§ 132 BAO) – Steuerklar speichert keine Bilder.
@@ -235,11 +237,11 @@ export default function Buchhaltung() {
               <Row
                 key={b.id}
                 label={b.beschreibung || k.label}
-                sublabel={`${datumDe(b.datum).slice(0, 6)} · ${k.label}${b.privatanteil ? ` · ${b.privatanteil} % privat` : ""}`}
+                sublabel={`${datumDe(b.datum).slice(0, 6)} · ${k.label}${b.privatanteil ? ` · ${b.privatanteil} % privat` : ""}${b.id.startsWith("re-") ? " · aus Rechnung" : ""}`}
                 value={`${k.art === "einnahme" ? "+" : "−"}${eur(b.netto + b.ust)}`}
                 valueColor={k.art === "einnahme" ? c.green : undefined}
                 chevron
-                onPress={() => { setHinweise([]); setMsg(null); setEdit(b); }}
+                onPress={() => (b.id.startsWith("re-") ? router.push("/mehr/rechnungen") : (setHinweise([]), setMsg(null), setEdit(b)))}
               />
             );
           })}
