@@ -8,7 +8,7 @@ const re = (x: Partial<Rechnung> = {}): Rechnung => ({
   id: "r1", nummer: "2025-001", datum: "2025-03-01", leistungVon: "2025-02-01", leistungBis: "2025-02-28",
   kunde: { name: "Muster GmbH", adresse: "Ring 2, 1010 Wien", uid: "" },
   positionen: [{ text: "Webdesign", menge: 10, einheit: "Std.", preis: 80, ustSatz: 20 }, { text: "Fachbuch", menge: 1, einheit: "Stk.", preis: 50, ustSatz: 10 }],
-  zahlungszielTage: 14, reverseCharge: false, notiz: "", bezahltAm: "", storniert: false, ...x,
+  zahlungszielTage: 14, reverseCharge: false, notiz: "", ausgestelltAm: "2025-03-01", bezahltAm: "", storniert: false, ...x,
 });
 
 describe("Ausgangsrechnungen", () => {
@@ -44,5 +44,10 @@ describe("Ausgangsrechnungen", () => {
     expect(op).toHaveLength(1);
     expect(op[0]!.ueberfaellig).toBe(true);
     expect(op[0]!.brutto).toBe(1015);
+  });
+  it("Entwürfe zählen weder als Erlös noch als offener Posten", () => {
+    const b = BetriebSchema.parse({ id: "b", firma, rechnungen: [re({ ausgestelltAm: "", bezahltAm: "2025-03-10" })] });
+    expect(offenePosten(b)).toHaveLength(0);
+    expect(calculate(TaxCaseSchema.parse({ year: 2025, betriebe: [b] })).umsatzsteuer).toBeNull();
   });
 });

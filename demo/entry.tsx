@@ -14,6 +14,7 @@ import Finanzamt from "@/app/app/finanzamt/page";
 import Buchhaltung from "@/app/app/buchhaltung/page";
 import Abgabe from "@/app/app/abgabe/page";
 import SteuerCheck from "@/app/app/check/page";
+import Rechnungen from "@/app/app/rechnungen/page";
 import KanzleiSeite from "@/app/app/kanzlei/page";
 import Konto from "@/app/app/konto/page";
 import Assistent from "@/app/app/assistent/page";
@@ -33,6 +34,7 @@ const PAGES: Record<string, () => React.ReactElement> = {
   "/app/buchhaltung": Buchhaltung,
   "/app/abgabe": Abgabe,
   "/app/check": SteuerCheck,
+  "/app/rechnungen": Rechnungen,
   "/app/kanzlei": KanzleiSeite,
   "/app/konto": Konto,
 };

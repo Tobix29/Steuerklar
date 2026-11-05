@@ -102,7 +102,7 @@ export const buchungIdFuer = (r: Rechnung) => `re-${r.id}`;
 export function rechnungenBuchen(b: Betrieb): Betrieb["buchungen"] {
   const manuell = b.buchungen.filter((x) => !x.id.startsWith("re-"));
   const auto = b.rechnungen
-    .filter((r) => r.bezahltAm && !r.storniert && /^\d{4}-\d{2}-\d{2}$/.test(r.bezahltAm))
+    .filter((r) => r.ausgestelltAm && r.bezahltAm && !r.storniert && /^\d{4}-\d{2}-\d{2}$/.test(r.bezahltAm))
     .map((r) => {
       const s = rechnungSummen(r, b.firma);
       return {
@@ -129,7 +129,7 @@ export interface Offen {
 export function offenePosten(b: Betrieb, today = new Date()): Offen[] {
   const heute = today.toISOString().slice(0, 10);
   return b.rechnungen
-    .filter((r) => !r.bezahltAm && !r.storniert)
+    .filter((r) => r.ausgestelltAm && !r.bezahltAm && !r.storniert)
     .map((r) => {
       const faellig = faelligAm(r);
       return { rechnung: r, brutto: rechnungSummen(r, b.firma).brutto, faellig, ueberfaellig: faellig < heute };
@@ -142,4 +142,35 @@ export function steuerHinweis(r: Rechnung, firma: Firma): string | null {
   if (r.reverseCharge) return "Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge, Art. 196 MwSt-RL).";
   if (firma.kleinunternehmer) return "Umsatzsteuerbefreit – Kleinunternehmer gemäß § 6 Abs. 1 Z 27 UStG.";
   return null;
+}
+
+/** Status für die Anzeige. */
+export function rechnungStatus(r: Rechnung, today = new Date()): "entwurf" | "offen" | "ueberfaellig" | "bezahlt" | "storniert" {
+  if (r.storniert) return "storniert";
+  if (!r.ausgestelltAm) return "entwurf";
+  if (r.bezahltAm) return "bezahlt";
+  return faelligAm(r) < today.toISOString().slice(0, 10) ? "ueberfaellig" : "offen";
+}
+
+/** Neuer Entwurf mit sinnvollen Vorgaben (Leistungsdatum = heute, letzter Kunde nicht vorbelegt). */
+export function neueRechnung(id: string, today = new Date()): Rechnung {
+  const d = today.toISOString().slice(0, 10);
+  return {
+    id, nummer: "", datum: d, leistungVon: d, leistungBis: "", kunde: { name: "", adresse: "", uid: "" },
+    positionen: [{ text: "", menge: 1, einheit: "Std.", preis: 0, ustSatz: 20 }], zahlungszielTage: 14, reverseCharge: false, notiz: "",
+    ausgestelltAm: "", bezahltAm: "", storniert: false,
+  };
+}
+
+/** Bisherige Kund:innen (für Vorschläge), neueste zuerst, ohne Duplikate. */
+export function kunden(rechnungen: Rechnung[]): Rechnung["kunde"][] {
+  const seen = new Set<string>();
+  const out: Rechnung["kunde"][] = [];
+  for (const r of [...rechnungen].reverse()) {
+    const k = r.kunde.name.trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(r.kunde);
+  }
+  return out;
 }

@@ -14,6 +14,7 @@ const NAV: { href: string; label: string; icon: string; nurDesktop?: boolean }[]
   { href: "/app/assistent", label: "Fragen", icon: "💬" },
   { href: "/app/finanzamt", label: "Finanzamt", icon: "🏛️" },
   { href: "/app/buchhaltung", label: "Buchhaltung", icon: "📒", nurDesktop: true },
+  { href: "/app/rechnungen", label: "Rechnungen", icon: "🧾", nurDesktop: true },
   { href: "/app/abgabe", label: "Abgeben", icon: "📤", nurDesktop: true },
   { href: "/app/konto", label: "Konto", icon: "⚙️" },
 ];

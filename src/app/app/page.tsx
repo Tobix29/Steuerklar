@@ -3,6 +3,7 @@ import Link from "next/link";
 import { eur } from "@/lib/client/api";
 import { insights } from "@/lib/tax/insights";
 import { fragen, mitErsparnis } from "@/lib/agent/fragen";
+import { offenePosten } from "@/lib/tax/rechnung";
 import { useCase } from "./CaseContext";
 import { YearsOverview } from "./YearsOverview";
 import { NaechsteTermine, RuecklagenPlaner } from "./Planer";
@@ -86,7 +87,11 @@ export default function Overview() {
       {data.betriebe.length > 0 && (
         <Link href="/app/buchhaltung" className="list-item card" style={{ color: "var(--text)" }}>
           <span className="icon-tile">📒</span>
-          <span className="grow">Buchhaltung<div className="tiny muted">{data.betriebe.reduce((a, b) => a + b.buchungen.length, 0)} Buchungen · Belege fotografieren und laufend erfassen</div></span>
+          <span className="grow">Buchhaltung<div className="tiny muted">{data.betriebe.reduce((a, b) => a + b.buchungen.length, 0)} Buchungen · Belege fotografieren und laufend erfassen</div>
+            {(() => {
+              const ue = data.betriebe.flatMap((b) => offenePosten(b)).filter((o) => o.ueberfaellig);
+              return ue.length ? <div className="tiny" style={{ color: "var(--red)" }}>{ue.length} überfällige Rechnung(en) · {eur(ue.reduce((s, o) => s + o.brutto, 0))}</div> : null;
+            })()}</span>
           <span className="muted">›</span>
         </Link>
       )}

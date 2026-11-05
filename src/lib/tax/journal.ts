@@ -11,7 +11,7 @@ import type { Betrieb, TaxCase } from "./types";
 
 /** Alle Buchungen eines Betriebs: manuelle plus automatisch aus bezahlten Ausgangsrechnungen. */
 export const alleBuchungen = (b: Betrieb) => (b.rechnungen.length ? rechnungenBuchen(b) : b.buchungen);
-export const hatJournal = (b: Betrieb) => b.buchungen.length > 0 || b.rechnungen.some((r) => r.bezahltAm && !r.storniert);
+export const hatJournal = (b: Betrieb) => b.buchungen.length > 0 || b.rechnungen.some((r) => r.ausgestelltAm && r.bezahltAm && !r.storniert);
 
 export const E1A_KATEGORIEN = {
   erloese: { label: "Erlöse (Honorare, Verkäufe)", art: "einnahme", kz: "9040" },

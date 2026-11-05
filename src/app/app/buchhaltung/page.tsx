@@ -163,6 +163,7 @@ export default function Buchhaltung() {
           <button className="btn" disabled={busy} onClick={() => camRef.current?.click()}>{busy ? <span className="spinner" /> : "📸"} {busy ? "KI liest …" : "Beleg fotografieren"}</button>
           <button className="btn btn-secondary" disabled={busy} onClick={() => fileRef.current?.click()}>PDF oder Bild</button>
           <button className="btn btn-secondary" onClick={() => { setHinweise([]); setEdit(leer()); }}>+ Manuell buchen</button>
+          <Link className="btn btn-secondary" href="/app/rechnungen">🧾 Rechnung schreiben</Link>
           {buchungen.length > 0 && <a className="btn btn-ghost" href={`/api/buchhaltung/csv?year=${year}&betrieb=${encodeURIComponent(betrieb.id)}`}>⬇︎ CSV-Export</a>}
           <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void scan(f); }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void scan(f); }} />

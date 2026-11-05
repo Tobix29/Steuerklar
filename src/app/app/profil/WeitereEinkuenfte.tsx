@@ -134,6 +134,7 @@ export function WeitereEinkuenfte({ data, set, year }: { data: TaxCase; set: (fn
                   <div className="tiny muted">{hatJournal(b) ? `${alleBuchungen(b).length} Buchung(en) – Summen kommen aus dem Journal` : "Belege laufend fotografieren statt Summen am Jahresende eintragen"}</div>
                 </div>
                 <Link className="btn btn-secondary btn-sm" href="/app/buchhaltung">Öffnen</Link>
+                <Link className="btn btn-ghost btn-sm" href="/app/rechnungen">Rechnungen</Link>
               </div>
               {!hatJournal(b) && (
               <Row label="Betriebseinnahmen" help="Netto ohne USt">

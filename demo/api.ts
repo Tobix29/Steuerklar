@@ -363,6 +363,14 @@ export async function download(path: string): Promise<string> {
       data = await buildPdf(d.snapshot.case, d.snapshot.result);
       filename = `Abgabe-${d.year}.pdf`;
     }
+  } else if (url.pathname === "/api/rechnungen/pdf") {
+    const c = await s.getCase(parseYear(url.searchParams.get("year")));
+    const b = c.betriebe.find((x) => x.id === url.searchParams.get("betrieb"));
+    const r = b?.rechnungen.find((x) => x.id === url.searchParams.get("id"));
+    if (!b || !r || !r.ausgestelltAm) return "Rechnung nicht gefunden oder noch nicht ausgestellt.";
+    const { rechnungPdf } = await import("@/lib/pdf/rechnung");
+    data = await rechnungPdf(r, b.firma);
+    filename = `Rechnung-${r.nummer}${r.storniert ? "-STORNO" : ""}.pdf`;
   } else if (url.pathname === "/api/account/export") {
     const years = [];
     for (const y of SUPPORTED_YEARS) years.push({ year: y, case: await s.getCase(y), documents: await s.listDocs(y) });

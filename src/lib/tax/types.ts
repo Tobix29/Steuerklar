@@ -116,6 +116,8 @@ export const BetriebSchema = z.object({
         zahlungszielTage: z.number().int().min(0).max(365).default(14),
         reverseCharge: z.boolean().default(false),
         notiz: z.string().max(1000).default(""),
+        /** Ausstellungsdatum; leer = Entwurf (änderbar). Ausgestellte Rechnungen werden nur noch storniert, nicht geändert. */
+        ausgestelltAm: z.string().max(10).default(""),
         /** Zahlungseingang (JJJJ-MM-TT) – erzeugt eine Buchung „Erlöse“ im Journal */
         bezahltAm: z.string().max(10).default(""),
         storniert: z.boolean().default(false),

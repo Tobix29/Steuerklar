@@ -114,7 +114,7 @@ export async function rechnungPdf(r: Rechnung, firma: Firma): Promise<Uint8Array
   // Summen
   ensure(90);
   const sumRow = (k: string, v: string, strong = false) => {
-    text(k, W - M - 150, y, { size: strong ? 11 : 10, f: strong ? bold : font, color: strong ? INK : MUTED });
+    text(k, W - M - 220, y, { size: strong ? 11 : 10, f: strong ? bold : font, color: strong ? INK : MUTED });
     text(v, W - M, y, { size: strong ? 11 : 10, f: strong ? bold : font, right: true });
     y -= strong ? 18 : 14;
   };
