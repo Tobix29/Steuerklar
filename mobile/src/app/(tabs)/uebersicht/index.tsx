@@ -7,6 +7,7 @@ import { useCase } from "~/lib/case";
 import { eur } from "~/lib/format";
 import { useColors } from "~/lib/theme";
 import { insights } from "@core/tax/insights";
+import { fragen, mitErsparnis } from "@core/agent/fragen";
 
 export default function Uebersicht() {
   const c = useColors();
@@ -36,6 +37,23 @@ export default function Uebersicht() {
   return (
     <Screen webTitle="Übersicht" onRefresh={reload} refreshing={loading}>
       <YearChips />
+
+      {(() => {
+        const offen = mitErsparnis(data, result, fragen(data, result));
+        if (!offen.length) return null;
+        const summe = offen.reduce((s, f) => s + Math.max(0, f.ersparnis), 0);
+        return (
+          <Section>
+            <Row
+              icon="✨"
+              label={`Steuer-Check ${year}`}
+              sublabel={`${offen.length} kurze Frage(n)${summe >= 20 ? ` · bis zu ca. ${eur(summe, 0)} mehr` : ""}`}
+              chevron
+              onPress={() => router.navigate("/uebersicht/check" as never)}
+            />
+          </Section>
+        );
+      })()}
 
       <Card style={{ alignItems: "center", gap: 6, paddingVertical: 28 }}>
         <Text style={t.muted}>{refund >= 0 ? "Voraussichtliche Gutschrift" : "Voraussichtliche Nachforderung"}</Text>
