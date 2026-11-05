@@ -329,7 +329,7 @@ export default function Rechnungen() {
                 {r.mahnungen.length > 0 && (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 16, paddingBottom: 8 }}>
                     {r.mahnungen.map((m) => (
-                      <View key={m.stufe} style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <View key={m.stufe} style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap", maxWidth: "100%" }}>
                         <Badge text={`${MAHNSTUFEN[m.stufe].titel} · ${de(m.datum)} · Frist ${de(m.frist)}`} tone={m.stufe === 3 ? "red" : "orange"} />
                         <Pressable accessibilityRole="button" disabled={saveState === "saving" || busy !== null} onPress={() => void mahnPdf(r, m)} hitSlop={8}>
                           <Text style={{ color: saveState === "saving" || busy !== null ? c.muted : c.accent, fontSize: 15 }}>{busy === `${r.id}-${m.stufe}` ? "PDF …" : saveState === "saving" ? "Speichert …" : "PDF"}</Text>
