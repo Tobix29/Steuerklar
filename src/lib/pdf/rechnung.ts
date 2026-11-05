@@ -1,6 +1,6 @@
 /** Rechnungs-PDF (A4) mit allen Angaben nach § 11 UStG. Läuft im Browser (Demo) und auf dem Server. */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { faelligAm, rechnungSummen, steuerHinweis, type Firma, type Rechnung } from "@/lib/tax/rechnung";
+import { faelligAm, MAHNSTUFEN, mahnText, rechnungSummen, steuerHinweis, type Firma, type Mahnung, type Rechnung } from "@/lib/tax/rechnung";
 
 const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
 const clean = (s: string) => [...s].map((c) => (c.charCodeAt(0) < 256 || WIN_ANSI_EXTRA.includes(c) ? c : "")).join("");
@@ -144,5 +144,48 @@ export async function rechnungPdf(r: Rechnung, firma: Firma): Promise<Uint8Array
     p.drawText(f.slice(0, 140), { x: M, y: 42, size: 7.5, font, color: MUTED });
     p.drawText("Erstellt mit Steuerklar", { x: W - M - font.widthOfTextAtSize("Erstellt mit Steuerklar", 7) , y: 30, size: 7, font, color: ACCENT });
   }
+  return doc.save();
+}
+
+/** Mahnschreiben (A4) zu einer Rechnung. */
+export async function mahnungPdf(r: Rechnung, firma: Firma, m: Mahnung): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const { betreff, text } = mahnText(r, firma, m);
+  doc.setTitle(clean(betreff));
+  doc.setCreator("Steuerklar");
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const W = 595.28, H = 841.89, M = 56;
+  const page = doc.addPage([W, H]);
+  let y = H - M;
+  const t = (s: string, x: number, yy: number, o: { size?: number; f?: PDFFont; color?: ReturnType<typeof rgb>; right?: boolean } = {}) => {
+    const size = o.size ?? 10, f = o.f ?? font, c = clean(s);
+    page.drawText(c, { x: o.right ? x - f.widthOfTextAtSize(c, size) : x, y: yy, size, font: f, color: o.color ?? INK });
+  };
+  t(firma.name || "[Name]", M, y, { size: 14, f: bold });
+  y -= 16;
+  for (const l of clean(firma.adresse).split("\n")) { t(l, M, y, { size: 9, color: MUTED }); y -= 12; }
+  y -= 24;
+  t(r.kunde.name, M, y, { size: 11, f: bold });
+  y -= 14;
+  for (const l of clean(r.kunde.adresse).split("\n")) { t(l, M, y); y -= 13; }
+  t(de(m.datum), W - M, H - M, { right: true, color: MUTED });
+  y -= 30;
+  t(betreff, M, y, { size: 18, f: bold, color: m.stufe === 3 ? rgb(0.75, 0.1, 0.1) : INK });
+  y -= 30;
+  const wrapW = W - 2 * M;
+  for (const para of clean(text).split("\n")) {
+    if (!para) { y -= 8; continue; }
+    let line = "";
+    for (const w of para.split(/\s+/)) {
+      const tt = line ? `${line} ${w}` : w;
+      if (font.widthOfTextAtSize(tt, 10.5) > wrapW && line) { t(line, M, y, { size: 10.5 }); y -= 15; line = w; }
+      else line = tt;
+    }
+    if (line) { t(line, M, y, { size: 10.5, f: para.startsWith("•") ? bold : font }); y -= 15; }
+  }
+  page.drawLine({ start: { x: M, y: 56 }, end: { x: W - M, y: 56 }, thickness: 0.5, color: LINE });
+  page.drawText(clean([firma.name, firma.adresse.replace(/\n/g, ", "), firma.iban && `IBAN ${firma.iban}`].filter(Boolean).join(" · ")).slice(0, 140), { x: M, y: 42, size: 7.5, font, color: MUTED });
+  page.drawText(clean(`${MAHNSTUFEN[m.stufe].titel} zu Rechnung ${r.nummer}`), { x: M, y: 30, size: 7, font, color: ACCENT });
   return doc.save();
 }

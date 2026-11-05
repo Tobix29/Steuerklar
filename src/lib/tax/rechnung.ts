@@ -158,7 +158,7 @@ export function neueRechnung(id: string, today = new Date()): Rechnung {
   return {
     id, nummer: "", datum: d, leistungVon: d, leistungBis: "", kunde: { name: "", adresse: "", uid: "" },
     positionen: [{ text: "", menge: 1, einheit: "Std.", preis: 0, ustSatz: 20 }], zahlungszielTage: 14, reverseCharge: false, notiz: "",
-    ausgestelltAm: "", bezahltAm: "", storniert: false,
+    ausgestelltAm: "", bezahltAm: "", storniert: false, mahnungen: [],
   };
 }
 
@@ -173,4 +173,90 @@ export function kunden(rechnungen: Rechnung[]): Rechnung["kunde"][] {
     out.push(r.kunde);
   }
   return out;
+}
+
+/* ------------------------------ Mahnwesen ------------------------------ */
+
+export type Mahnung = Rechnung["mahnungen"][number];
+
+export const MAHNSTUFEN = {
+  1: { titel: "Zahlungserinnerung", abstand: 3 },
+  2: { titel: "1. Mahnung", abstand: 14 },
+  3: { titel: "Letzte Mahnung", abstand: 14 },
+} as const;
+
+/** Verzugszinsen: Verbraucher:innen 4 % p. a. (§ 1000 Abs 1 ABGB); Unternehmen 9,2 Prozentpunkte über dem Basiszinssatz (§ 456 UGB). */
+export const VERZUG = { verbraucher: 4, ueberBasiszins: 9.2, pauschaleB2B: 40 };
+
+/** Unternehmen erkennt man an der UID (sonst als Verbraucher:in behandeln – der vorsichtigere Fall). */
+export const istUnternehmen = (r: Rechnung) => r.kunde.uid.trim().length > 0;
+
+const addDays = (iso: string, d: number) => {
+  const x = new Date(`${iso}T00:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + d);
+  return x.toISOString().slice(0, 10);
+};
+const tageZwischen = (a: string, b: string) => Math.max(0, Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000));
+
+/** Verzugszinsen auf den Bruttobetrag ab Fälligkeit bis zum Stichtag. */
+export function verzugszinsen(r: Rechnung, firma: Firma, zinssatz: number, bis: string): number {
+  const tage = tageZwischen(faelligAm(r), bis);
+  return cents((rechnungSummen(r, firma).brutto * (zinssatz / 100) * tage) / 365);
+}
+
+export interface MahnVorschlag {
+  stufe: 1 | 2 | 3;
+  /** Ab wann die nächste Stufe sinnvoll ist */
+  ab: string;
+  faellig: boolean;
+}
+
+/** Nächste Mahnstufe für eine offene, überfällige Rechnung – oder null. */
+export function naechsteMahnung(r: Rechnung, today = new Date()): MahnVorschlag | null {
+  if (!r.ausgestelltAm || r.bezahltAm || r.storniert) return null;
+  const heute = today.toISOString().slice(0, 10);
+  const letzte = r.mahnungen.at(-1);
+  if (letzte && letzte.stufe >= 3) return null;
+  const stufe = ((letzte?.stufe ?? 0) + 1) as 1 | 2 | 3;
+  const ab = letzte ? addDays(letzte.frist, 1) : addDays(faelligAm(r), MAHNSTUFEN[1].abstand);
+  return { stufe, ab, faellig: heute >= ab };
+}
+
+/** Neue Mahnung mit Vorschlagswerten (Zinsen erst ab der 1. Mahnung, Pauschale nur bei Unternehmen). */
+export function mahnungEntwurf(r: Rechnung, firma: Firma, stufe: 1 | 2 | 3, today = new Date(), zinssatz?: number): Mahnung {
+  const datum = today.toISOString().slice(0, 10);
+  const satz = stufe === 1 ? 0 : zinssatz ?? (istUnternehmen(r) ? 0 : VERZUG.verbraucher);
+  const gebuehr = stufe >= 2 && istUnternehmen(r) && !r.mahnungen.some((m) => m.gebuehr > 0) ? VERZUG.pauschaleB2B : 0;
+  return { stufe, datum, frist: addDays(datum, stufe === 3 ? 7 : 14), zinssatz: satz, zinsen: satz ? verzugszinsen(r, firma, satz, datum) : 0, gebuehr };
+}
+
+/** Offener Gesamtbetrag inkl. aller vermerkten Zinsen und Gebühren (Zinsen der letzten Mahnung, Gebühren summiert). */
+export function mahnSumme(r: Rechnung, firma: Firma, m: Mahnung): { offen: number; zinsen: number; gebuehren: number; gesamt: number } {
+  const offen = rechnungSummen(r, firma).brutto;
+  const gebuehren = cents(r.mahnungen.filter((x) => x !== m && x.stufe < m.stufe).reduce((s, x) => s + x.gebuehr, 0) + m.gebuehr);
+  return { offen, zinsen: m.zinsen, gebuehren, gesamt: cents(offen + m.zinsen + gebuehren) };
+}
+
+const deDatum = (iso: string) => iso.split("-").reverse().join(".");
+const fmt = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+/** Betreff und Text der Mahnung (für E-Mail und PDF). */
+export function mahnText(r: Rechnung, firma: Firma, m: Mahnung): { betreff: string; text: string } {
+  const s = mahnSumme(r, firma, m);
+  const titel = MAHNSTUFEN[m.stufe].titel;
+  const anrede = "Sehr geehrte Damen und Herren,";
+  const posten = [
+    `Rechnung ${r.nummer} vom ${deDatum(r.datum)}, fällig am ${deDatum(faelligAm(r))}: ${fmt(s.offen)}`,
+    ...(s.zinsen ? [`Verzugszinsen ${m.zinssatz.toLocaleString("de-DE")} % p. a. bis ${deDatum(m.datum)}: ${fmt(s.zinsen)}`] : []),
+    ...(s.gebuehren ? [`${istUnternehmen(r) ? "Pauschale für Betreibungskosten (§ 458 UGB)" : "Mahnspesen"}: ${fmt(s.gebuehren)}`] : []),
+  ];
+  const zahlung = `Bitte überweisen Sie ${fmt(s.gesamt)} bis ${deDatum(m.frist)}${firma.iban ? ` auf das Konto IBAN ${firma.iban}` : ""} (Verwendungszweck: ${r.nummer}).`;
+  const koerper =
+    m.stufe === 1
+      ? [anrede, "", `vermutlich ist es im Alltag untergegangen: Zu unserer Rechnung ${r.nummer} ist bis heute keine Zahlung eingegangen.`, "", ...posten.map((p) => `• ${p}`), "", zahlung, "", "Sollte sich die Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos."]
+      : m.stufe === 2
+        ? [anrede, "", `trotz unserer Zahlungserinnerung ist die folgende Rechnung weiterhin offen:`, "", ...posten.map((p) => `• ${p}`), "", zahlung]
+        : [anrede, "", `trotz Erinnerung und Mahnung ist die folgende Forderung noch immer offen:`, "", ...posten.map((p) => `• ${p}`), "", zahlung, "", `Sollte bis ${deDatum(m.frist)} keine Zahlung eingehen, werden wir die Forderung ohne weitere Ankündigung gerichtlich geltend machen bzw. an ein Inkassobüro übergeben. Die dadurch entstehenden Kosten gehen zu Ihren Lasten.`];
+  const text = [...koerper, "", "Mit freundlichen Grüßen", firma.name || "[Name]", ...(firma.email ? [firma.email] : [])].join("\n");
+  return { betreff: `${titel}: Rechnung ${r.nummer}`, text };
 }

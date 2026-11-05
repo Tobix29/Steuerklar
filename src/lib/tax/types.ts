@@ -121,6 +121,18 @@ export const BetriebSchema = z.object({
         /** Zahlungseingang (JJJJ-MM-TT) – erzeugt eine Buchung „Erlöse“ im Journal */
         bezahltAm: z.string().max(10).default(""),
         storniert: z.boolean().default(false),
+        /** Zahlungserinnerung und Mahnungen (Stufe 1–3) */
+        mahnungen: z
+          .array(z.object({
+            stufe: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+            datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            frist: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            zinssatz: z.number().min(0).max(30).default(0),
+            zinsen: money.default(0),
+            gebuehr: money.default(0),
+          }))
+          .max(3)
+          .default([]),
       }),
     )
     .max(2000)

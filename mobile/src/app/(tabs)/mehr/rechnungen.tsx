@@ -287,7 +287,7 @@ export default function Rechnungen() {
                     <Button
                       title="Kopieren"
                       variant="ghost"
-                      onPress={() => { setAktiv(null); setMsg(null); setEdit({ ...r, id: uid(), nummer: "", ausgestelltAm: "", bezahltAm: "", storniert: false, datum: standardDatum }); }}
+                      onPress={() => { setAktiv(null); setMsg(null); setEdit({ ...r, id: uid(), nummer: "", ausgestelltAm: "", bezahltAm: "", storniert: false, mahnungen: [], datum: standardDatum }); }}
                     />
                     {st !== "storniert" && (
                       <Button

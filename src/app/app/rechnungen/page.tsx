@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MoneyInput, NumberInput, Toggle, useToast } from "@/components/ui";
 import { eur, uid } from "@/lib/client/api";
-import { faelligAm, ibanGueltig, kunden, naechsteNummer, neueRechnung, offenePosten, pflichtangaben, rechnungStatus, rechnungSummen, steuerHinweis, type Firma, type Rechnung } from "@/lib/tax/rechnung";
+import { faelligAm, ibanGueltig, istUnternehmen, kunden, MAHNSTUFEN, mahnSumme, mahnText, mahnungEntwurf, naechsteMahnung, naechsteNummer, neueRechnung, offenePosten, pflichtangaben, rechnungStatus, rechnungSummen, steuerHinweis, VERZUG, type Firma, type Mahnung, type Rechnung } from "@/lib/tax/rechnung";
 import type { Betrieb } from "@/lib/tax/types";
 import { useCase } from "../CaseContext";
 
@@ -143,11 +143,49 @@ function Editor({ value, firma, vorschlaege, onSave, onAusstellen, onCancel, onD
   );
 }
 
+function MahnPanel({ r, firma, onVermerken, onClose }: { r: Rechnung; firma: Firma; onVermerken: (m: Mahnung) => void; onClose: () => void }) {
+  const v = naechsteMahnung(r);
+  const [m, setM] = useState<Mahnung | null>(() => (v ? mahnungEntwurf(r, firma, v.stufe) : null));
+  if (!v || !m) return null;
+  const b2b = istUnternehmen(r);
+  const s = mahnSumme(r, firma, m);
+  const { text } = mahnText(r, firma, m);
+  const setZins = (satz: number) => setM({ ...m, zinssatz: satz, zinsen: satz ? mahnungEntwurf(r, firma, m.stufe, new Date(`${m.datum}T12:00:00Z`), satz).zinsen : 0 });
+  return (
+    <div className="card card-flat stack fade-in" style={{ flexBasis: "100%", "--gap": "10px" } as React.CSSProperties}>
+      <strong>{MAHNSTUFEN[m.stufe].titel} zu {r.nummer}</strong>
+      <div className="grid grid-3" style={{ gap: 10 }}>
+        <div className="field">
+          <span className="label">Verzugszinsen % p. a.</span>
+          <NumberInput ariaLabel="Verzugszinsen" value={m.zinssatz} max={30} suffix="%" onChange={setZins} />
+          <span className="help">{b2b ? `Unternehmen: ${VERZUG.ueberBasiszins} %-Punkte über dem Basiszinssatz der OeNB (§ 456 UGB)` : `Privatkund:in: ${VERZUG.verbraucher} % (§ 1000 ABGB)`}{m.stufe === 1 ? " – bei der Erinnerung meist noch nicht" : ""}</span>
+        </div>
+        <div className="field">
+          <span className="label">{b2b ? "Pauschale (§ 458 UGB)" : "Mahnspesen"}</span>
+          <MoneyInput ariaLabel="Mahngebühr" value={m.gebuehr} onChange={(x) => setM({ ...m, gebuehr: x })} />
+          <span className="help">{b2b ? "40 € einmal je Forderung" : "nur tatsächliche, angemessene Kosten"}</span>
+        </div>
+        <div className="field">
+          <label className="label" htmlFor={`mf-${r.id}`}>Neue Zahlungsfrist</label>
+          <input id={`mf-${r.id}`} className="input" type="date" value={m.frist} min={m.datum} onChange={(e) => setM({ ...m, frist: e.target.value })} />
+        </div>
+      </div>
+      <div className="small">Zu zahlen: <strong className="num">{eur(s.gesamt)}</strong> <span className="muted">({eur(s.offen)} offen{s.zinsen ? ` + ${eur(s.zinsen)} Zinsen` : ""}{s.gebuehren ? ` + ${eur(s.gebuehren)} Kosten` : ""})</span></div>
+      <textarea className="input" readOnly rows={9} aria-label="Vorschau Mahntext" value={text} style={{ fontSize: 13, lineHeight: 1.5 }} />
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <button className="btn btn-sm" disabled={!m.frist} onClick={() => onVermerken(m)}>Erstellen & vermerken</button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Abbrechen</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Rechnungen() {
   const { data, update, year, result, saveState } = useCase();
   const [idx, setIdx] = useState(0);
   const [edit, setEdit] = useState<Rechnung | null>(null);
   const [zahlung, setZahlung] = useState<{ id: string; datum: string } | null>(null);
+  const [mahnen, setMahnen] = useState<string | null>(null);
   const toast = useToast();
   if (!data || !result) return <div className="shimmer" style={{ height: 240, borderRadius: 18 }} />;
 
@@ -185,6 +223,12 @@ export default function Rechnungen() {
   const liste = [...b.rechnungen].sort((x, y) => (y.nummer || "~").localeCompare(x.nummer || "~") || y.datum.localeCompare(x.datum));
   const op = offenePosten(b);
   const ueber = op.filter((o) => o.ueberfaellig);
+  const mahnPdf = (r: Rechnung, stufe: number) => `/api/rechnungen/mahnung?year=${year}&betrieb=${encodeURIComponent(b.id)}&id=${encodeURIComponent(r.id)}&stufe=${stufe}`;
+  const mailto = (r: Rechnung, m: Mahnung) => {
+    const t = mahnText(r, b.firma, m);
+    return `mailto:?subject=${encodeURIComponent(t.betreff)}&body=${encodeURIComponent(t.text)}`;
+  };
+  const mahnFaellig = b.rechnungen.filter((r) => naechsteMahnung(r)?.faellig);
   const pdf = (r: Rechnung) => `/api/rechnungen/pdf?year=${year}&betrieb=${encodeURIComponent(b.id)}&id=${encodeURIComponent(r.id)}`;
   // Vorgabe für neue Rechnungen: heute, außer man arbeitet in einem anderen Steuerjahr
   const standardDatum = new Date().getFullYear() === year ? new Date().toISOString().slice(0, 10) : `${year}-12-31`;
@@ -200,6 +244,12 @@ export default function Rechnungen() {
       )}
       <FirmaKarte firma={b.firma} warnKlein={warnKlein} onChange={(f) => setB((x) => void (x.firma = f))} />
 
+      {mahnFaellig.length > 0 && !edit && (
+        <div className="notice notice-orange small">
+          <span>⏰</span>
+          <span>{mahnFaellig.length} Rechnung(en) sind überfällig – Zeit für {mahnFaellig.map((r) => `${MAHNSTUFEN[naechsteMahnung(r)!.stufe].titel.toLowerCase()} zu ${r.nummer}`).join(", ")}.</span>
+        </div>
+      )}
       <section className="grid grid-3">
         <div className="card"><div className="tiny muted">Offen</div><div className="title-2 num">{eur(op.reduce((s, o) => s + o.brutto, 0))}</div><div className="tiny muted">{op.length} Rechnung(en)</div></div>
         <div className="card"><div className="tiny muted">Überfällig</div><div className="title-2 num" style={{ color: ueber.length ? "var(--red)" : undefined }}>{eur(ueber.reduce((s, o) => s + o.brutto, 0))}</div><div className="tiny muted">{ueber.length} Rechnung(en)</div></div>
@@ -234,8 +284,33 @@ export default function Rechnungen() {
                   {(st === "offen" || st === "ueberfaellig") && <button className="btn btn-secondary btn-sm" onClick={() => setZahlung({ id: r.id, datum: new Date().toISOString().slice(0, 10) })}>Bezahlt</button>}
                   {st === "bezahlt" && <button className="btn btn-ghost btn-sm" onClick={() => setB((x) => void (x.rechnungen.find((y) => y.id === r.id)!.bezahltAm = ""))}>Zahlung zurücknehmen</button>}
                   {st !== "entwurf" && st !== "storniert" && <button className="btn btn-ghost btn-sm" style={{ color: "var(--red)" }} onClick={() => confirm(`Rechnung ${r.nummer} stornieren?`) && setB((x) => { const y = x.rechnungen.find((z) => z.id === r.id)!; y.storniert = true; })}>Storno</button>}
-                  {st !== "entwurf" && <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ ...r, id: uid(), nummer: "", ausgestelltAm: "", bezahltAm: "", storniert: false, datum: standardDatum })}>Kopieren</button>}
+                  {st !== "entwurf" && <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ ...r, id: uid(), nummer: "", ausgestelltAm: "", bezahltAm: "", storniert: false, mahnungen: [], datum: standardDatum })}>Kopieren</button>}
                 </span>
+                {r.mahnungen.length > 0 && (
+                  <div className="row tiny" style={{ flexBasis: "100%", flexWrap: "wrap", gap: 6 }}>
+                    {r.mahnungen.map((m) => (
+                      <span key={m.stufe} className="row" style={{ gap: 4 }}>
+                        <span className={`badge ${m.stufe === 3 ? "badge-red" : "badge-orange"}`}>{MAHNSTUFEN[m.stufe].titel} · {de(m.datum)} · Frist {de(m.frist)}</span>
+                        {saveState === "saving" ? null : <a className="btn btn-ghost btn-sm" href={mahnPdf(r, m.stufe)}>PDF</a>}
+                        <a className="btn btn-ghost btn-sm" href={mailto(r, m)}>E-Mail</a>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {(() => {
+                  const v = naechsteMahnung(r);
+                  if (!v || mahnen === r.id) return null;
+                  return v.faellig ? (
+                    <button className="btn btn-sm" style={{ background: "var(--red)" }} onClick={() => setMahnen(r.id)}>{MAHNSTUFEN[v.stufe].titel} erstellen</button>
+                  ) : null;
+                })()}
+                {mahnen === r.id && (
+                  <MahnPanel r={r} firma={b.firma} onClose={() => setMahnen(null)} onVermerken={(m) => {
+                    setB((x) => { const y = x.rechnungen.find((z) => z.id === r.id)!; y.mahnungen = [...y.mahnungen.filter((z) => z.stufe !== m.stufe), m]; });
+                    setMahnen(null);
+                    toast.show(`✓ ${MAHNSTUFEN[m.stufe].titel} erstellt – jetzt als PDF oder E-Mail verschicken`);
+                  }} />
+                )}
                 {zahlung?.id === r.id && (
                   <div className="row fade-in" style={{ flexBasis: "100%", flexWrap: "wrap" }}>
                     <label className="small" htmlFor={`z-${r.id}`}>Zahlungseingang am</label>

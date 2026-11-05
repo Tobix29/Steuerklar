@@ -7,6 +7,7 @@
  */
 import { calculate } from "./calculate";
 import { fristen, SVS, UVA } from "./constants";
+import { MAHNSTUFEN, naechsteMahnung } from "./rechnung";
 import type { TaxCase, TaxResult } from "./types";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -119,6 +120,12 @@ export function termine(c: TaxCase, r: TaxResult, today = new Date()): Termin[] 
           out.push({ datum: due, titel: `UVA ${q}. Quartal ${jahr}${p.uva.abgabepflicht ? "" : " (nur Zahlung)"}`, art: "uva", betrag: p.uva.zahllastJeZeitraum });
     }
   }
+  // Mahnwesen: wann die nächste Erinnerung bzw. Mahnung fällig wird
+  for (const b of c.betriebe)
+    for (const re of b.rechnungen) {
+      const m = naechsteMahnung(re, today);
+      if (m) out.push({ datum: m.faellig ? today.toISOString().slice(0, 10) : m.ab, titel: `${MAHNSTUFEN[m.stufe].titel} zu Rechnung ${re.nummer}${re.kunde.name ? ` (${re.kunde.name})` : ""}`, art: "frist" });
+    }
   const heute = today.toISOString().slice(0, 10);
   const bis = iso(y + 1, today.getUTCMonth() + 1, Math.min(28, today.getUTCDate()));
   return out

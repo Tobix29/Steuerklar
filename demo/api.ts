@@ -363,6 +363,15 @@ export async function download(path: string): Promise<string> {
       data = await buildPdf(d.snapshot.case, d.snapshot.result);
       filename = `Abgabe-${d.year}.pdf`;
     }
+  } else if (url.pathname === "/api/rechnungen/mahnung") {
+    const c = await s.getCase(parseYear(url.searchParams.get("year")));
+    const b = c.betriebe.find((x) => x.id === url.searchParams.get("betrieb"));
+    const r = b?.rechnungen.find((x) => x.id === url.searchParams.get("id"));
+    const m = r?.mahnungen.find((x) => x.stufe === Number(url.searchParams.get("stufe")));
+    if (!b || !r || !m) return "Mahnung nicht gefunden.";
+    const { mahnungPdf } = await import("@/lib/pdf/rechnung");
+    data = await mahnungPdf(r, b.firma, m);
+    filename = `Mahnung-${m.stufe}-${r.nummer}.pdf`;
   } else if (url.pathname === "/api/rechnungen/pdf") {
     const c = await s.getCase(parseYear(url.searchParams.get("year")));
     const b = c.betriebe.find((x) => x.id === url.searchParams.get("betrieb"));

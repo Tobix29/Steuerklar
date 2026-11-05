@@ -8,7 +8,7 @@ const re = (x: Partial<Rechnung> = {}): Rechnung => ({
   id: "r1", nummer: "2025-001", datum: "2025-03-01", leistungVon: "2025-02-01", leistungBis: "2025-02-28",
   kunde: { name: "Muster GmbH", adresse: "Ring 2, 1010 Wien", uid: "" },
   positionen: [{ text: "Webdesign", menge: 10, einheit: "Std.", preis: 80, ustSatz: 20 }, { text: "Fachbuch", menge: 1, einheit: "Stk.", preis: 50, ustSatz: 10 }],
-  zahlungszielTage: 14, reverseCharge: false, notiz: "", ausgestelltAm: "2025-03-01", bezahltAm: "", storniert: false, ...x,
+  zahlungszielTage: 14, reverseCharge: false, notiz: "", ausgestelltAm: "2025-03-01", bezahltAm: "", storniert: false, mahnungen: [], ...x,
 });
 
 describe("Ausgangsrechnungen", () => {
