@@ -57,6 +57,7 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 | Erklärung | L1, L1k, L1i, E1, E1a, E1b, E1kv, U1 – Kennzahlen als Ausfüllhilfe, PDF |
 | Belege | Foto/PDF → KI erkennt Lohnzettel und Rechnungen; Kontoauszug-Import findet Absetzbares |
 | Buchhaltung | Einnahmen-Ausgaben-Journal (`/app/buchhaltung`): Beleg fotografieren → KI schlägt Kategorie, Netto, Vorsteuer vor; Privatanteil, Bewirtung 50 %, Zufluss-Abfluss; Summen fließen in E1a/U1; CSV-Export |
+| Rechnungen | Ausgangsrechnungen (`/app/rechnungen`) mit Prüfung der Pflichtangaben nach § 11 UStG (Kleinbetragsrechnung bis 400 €, UID ab 10.000 €, Kleinunternehmer- und Reverse-Charge-Hinweis), lückenlosem Nummernkreis, PDF, Storno, offenen Posten; Zahlungseingang bucht automatisch den Erlös im Journal |
 | Optimierung | Spar-Check, Regelbesteuerungs-/Verlustausgleichsoption, Gewinnfreibeträge, Anlagenverzeichnis (AfA, GWG, Pkw) |
 | Planung | Rücklagen-Planer: ESt-Vorauszahlungen, SVS-Beiträge, UVA-Zahllast; alle Termine als Kalender (`/api/calendar?alle=1`) |
 | Nach der Abgabe | **Bescheid prüfen** (`/api/finanzamt/bescheid`): Bescheid auslesen, mit eigener Berechnung vergleichen, Beschwerde-Entwurf nach §§ 243/250 BAO mit Frist (§ 245 BAO, § 108 BAO inkl. Feiertage) und ggf. Aussetzungsantrag (§ 212a BAO) |
