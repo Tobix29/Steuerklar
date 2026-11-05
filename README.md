@@ -63,6 +63,7 @@ PDF laufen im Browser; Belege erkennt Claude über die `sample`-Capability des A
 | Post vom Amt | **Brief erklären** (`/api/finanzamt/post`): Ergänzungsersuchen, Vorhalt, Zahlungsaufforderung … → Zusammenfassung, Schritte, Unterlagen, Antwort-Entwurf |
 | Anträge | Herabsetzung der Vorauszahlungen (§ 45 Abs. 4 EStG), Fristverlängerungen (§ 245 Abs. 3, § 134 Abs. 2 BAO), Ratenzahlung/Stundung (§ 212 BAO), Rückzahlung (§ 239 BAO) |
 | Sonderfälle | AMS-Bezüge mit Hochrechnung und Kontrollrechnung (§ 3 Abs. 2 EStG), Krypto/ausländische Depots ohne KESt (27,5 %, E1kv), Spekulationsgeschäfte und gelegentliche Leistungen mit Freigrenzen |
+| Steuer-Check | Jährlicher Abzugs-Agent (`/app/check`): gezielte Fragen mit geschätzter Ersparnis je Antwort, Abgleich mit dem Vorjahr (Kinder, Pendeln, Vermietung, Betrieb übernehmen), KI-Ideen zum Fall, Abschluss → Freigabe an die Kanzlei; Erinnerung am 1. März im Kalender |
 | Fragen | KI-Steuerassistent mit Fallkontext |
 
 **Bleibt der Steuerberatung vorbehalten (WTBG 2017):** Vertretung vor Finanzamt und Bundesfinanzgericht, Außenprüfungen,
