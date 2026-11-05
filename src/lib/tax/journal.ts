@@ -6,7 +6,12 @@
  * ändert das BMF die Kennzahlen je nach Jahr – sie stehen im Formular E1a des jeweiligen Jahres.
  */
 import { gwgGrenze, kleinunternehmerUst } from "./constants";
+import { rechnungenBuchen } from "./rechnung";
 import type { Betrieb, TaxCase } from "./types";
+
+/** Alle Buchungen eines Betriebs: manuelle plus automatisch aus bezahlten Ausgangsrechnungen. */
+export const alleBuchungen = (b: Betrieb) => (b.rechnungen.length ? rechnungenBuchen(b) : b.buchungen);
+export const hatJournal = (b: Betrieb) => b.buchungen.length > 0 || b.rechnungen.some((r) => r.bezahltAm && !r.storniert);
 
 export const E1A_KATEGORIEN = {
   erloese: { label: "Erlöse (Honorare, Verkäufe)", art: "einnahme", kz: "9040" },
@@ -100,14 +105,14 @@ function istKleinunternehmer(c: TaxCase, einnahmenJe: (b: Betrieb) => number): b
 
 /** Ersetzt bei Betrieben mit Journal die Summenfelder durch die Werte aus den Buchungen. */
 export function mitJournal(c: TaxCase): TaxCase {
-  if (!c.betriebe.some((b) => b.buchungen.length)) return c;
-  const einnahmenJe = (b: Betrieb) => (b.buchungen.length ? journalSummen(b.buchungen, c.year).einnahmen : b.einnahmen);
+  if (!c.betriebe.some(hatJournal)) return c;
+  const einnahmenJe = (b: Betrieb) => (hatJournal(b) ? journalSummen(alleBuchungen(b), c.year).einnahmen : b.einnahmen);
   const klein = istKleinunternehmer(c, einnahmenJe);
   return {
     ...c,
     betriebe: c.betriebe.map((b) => {
-      if (!b.buchungen.length) return b;
-      const s = journalSummen(b.buchungen, c.year, !klein);
+      if (!hatJournal(b)) return b;
+      const s = journalSummen(alleBuchungen(b), c.year, !klein);
       return { ...b, einnahmen: s.einnahmen, ausgaben: s.ausgaben, vorsteuer: s.vorsteuer, sozialversicherung: s.svs };
     }),
   };

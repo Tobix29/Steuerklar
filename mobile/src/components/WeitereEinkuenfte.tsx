@@ -15,7 +15,8 @@ const neuesObjekt = (year: number): Mietobjekt => ({
 });
 
 const neuerBetrieb = (): Betrieb => ({
-  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0, anlagen: [], buchungen: [],
+  id: uid(), bezeichnung: "", art: "selbstaendig", einnahmen: 0, gewinnermittlung: "ear", ausgaben: 0, sozialversicherung: 0, reduzierterSatz: false, dienstleistung: false, investitionen: 0, ustSatz: 20, vorsteuer: 0, anlagen: [], buchungen: [], rechnungen: [],
+  firma: { name: "", adresse: "", uid: "", iban: "", bic: "", email: "", kleinunternehmer: true },
 });
 
 /** Vermietung (E1b) und Selbständig/Gewerbe (E1a) inkl. Instandsetzungen und Umsatzsteuer. */

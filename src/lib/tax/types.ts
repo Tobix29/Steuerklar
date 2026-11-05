@@ -85,6 +85,44 @@ export const BetriebSchema = z.object({
   sozialversicherung: optMoney,
   /** Basispauschalierung: Tätigkeit mit reduziertem Satz (z. B. Beratung, Vortrag, Schriftsteller) */
   reduzierterSatz: z.boolean().default(false),
+  /** Rechnungsaussteller:in (für Ausgangsrechnungen nach § 11 UStG) */
+  firma: z
+    .object({
+      name: z.string().max(200).default(""),
+      adresse: z.string().max(400).default(""),
+      uid: z.string().max(20).default(""),
+      iban: z.string().max(40).default(""),
+      bic: z.string().max(15).default(""),
+      email: z.string().max(200).default(""),
+      /** Kleinunternehmerbefreiung auf Rechnungen ausweisen (§ 6 Abs 1 Z 27 UStG) */
+      kleinunternehmer: z.boolean().default(true),
+    })
+    .default({ name: "", adresse: "", uid: "", iban: "", bic: "", email: "", kleinunternehmer: true }),
+  rechnungen: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        nummer: z.string().max(40),
+        datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        leistungVon: z.string().max(10).default(""),
+        leistungBis: z.string().max(10).default(""),
+        kunde: z
+          .object({ name: z.string().max(200).default(""), adresse: z.string().max(400).default(""), uid: z.string().max(20).default("") })
+          .default({ name: "", adresse: "", uid: "" }),
+        positionen: z
+          .array(z.object({ text: z.string().max(300).default(""), menge: z.number().finite().min(0).max(1_000_000).default(1), einheit: z.string().max(20).default("Stk."), preis: money, ustSatz: z.union([z.literal(20), z.literal(13), z.literal(10), z.literal(0)]).default(20) }))
+          .max(50)
+          .default([]),
+        zahlungszielTage: z.number().int().min(0).max(365).default(14),
+        reverseCharge: z.boolean().default(false),
+        notiz: z.string().max(1000).default(""),
+        /** Zahlungseingang (JJJJ-MM-TT) – erzeugt eine Buchung „Erlöse“ im Journal */
+        bezahltAm: z.string().max(10).default(""),
+        storniert: z.boolean().default(false),
+      }),
+    )
+    .max(2000)
+    .default([]),
   /** Einnahmen-Ausgaben-Journal: wenn vorhanden, ersetzen die Summen Einnahmen, Ausgaben, Vorsteuer und SVS */
   buchungen: z
     .array(

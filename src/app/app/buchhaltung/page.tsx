@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { MoneyInput, NumberInput, useToast } from "@/components/ui";
 import { eur, scanBuchung, uid } from "@/lib/client/api";
 import { downscale } from "@/lib/client/image";
-import { E1A_KATEGORIEN, E1A_KEYS, journalSummen, type Buchung, type E1aKategorie } from "@/lib/tax/journal";
+import { alleBuchungen, E1A_KATEGORIEN, E1A_KEYS, journalSummen, type Buchung, type E1aKategorie } from "@/lib/tax/journal";
 import { useCase } from "../CaseContext";
 
 const MONATE = ["Jänner", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -88,8 +88,9 @@ export default function Buchhaltung() {
       </div>
     );
 
-  const s = journalSummen(betrieb.buchungen, year);
-  const buchungen = betrieb.buchungen.filter((b) => b.datum.startsWith(`${year}-`)).sort((a, b) => b.datum.localeCompare(a.datum));
+  const alle = alleBuchungen(betrieb);
+  const s = journalSummen(alle, year);
+  const buchungen = alle.filter((b) => b.datum.startsWith(`${year}-`)).sort((a, b) => b.datum.localeCompare(a.datum));
   const save = (b: Buchung) => {
     update((d) => {
       const list = d.betriebe[i]!.buchungen;
@@ -202,11 +203,11 @@ export default function Buchhaltung() {
               {list.map((b) => {
                 const k = E1A_KATEGORIEN[b.kategorie];
                 return (
-                  <button key={b.id} className="list-item" style={{ width: "100%", textAlign: "left", background: "none", border: 0, cursor: "pointer", color: "var(--text)" }} onClick={() => { setHinweise([]); setEdit(b); }}>
+                  <button key={b.id} className="list-item" style={{ width: "100%", textAlign: "left", background: "none", border: 0, cursor: "pointer", color: "var(--text)" }} onClick={() => { if (b.id.startsWith("re-")) { toast.show("Diese Buchung kommt aus einer bezahlten Rechnung – ändere sie unter Rechnungen."); return; } setHinweise([]); setEdit(b); }}>
                     <span className="tiny muted" style={{ width: 44, flexShrink: 0 }}>{datumDe(b.datum).slice(0, 6)}</span>
                     <span className="grow" style={{ minWidth: 0 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.beschreibung || k.label}</div>
-                      <div className="tiny muted">{k.label}{b.privatanteil ? ` · ${b.privatanteil} % privat` : ""}</div>
+                      <div className="tiny muted">{k.label}{b.privatanteil ? ` · ${b.privatanteil} % privat` : ""}{b.id.startsWith("re-") ? " · aus Rechnung" : ""}</div>
                     </span>
                     <span className="num" style={{ color: k.art === "einnahme" ? "var(--green)" : undefined }}>{k.art === "einnahme" ? "+" : "−"}{eur(b.netto + b.ust)}</span>
                   </button>

@@ -14,7 +14,7 @@ import { store } from "./store";
 import { pdfToImages } from "./pdf";
 import { fristIcs, termineIcs } from "@/lib/tax/calendar";
 import { termine } from "@/lib/tax/planer";
-import { journalCsv } from "@/lib/tax/journal";
+import { alleBuchungen, journalCsv } from "@/lib/tax/journal";
 import { buchungInstructions, BuchungScanSchema, sanitizeBuchung, type BuchungScan } from "@/lib/ai/buchung";
 import { BESCHEID_INSTRUCTIONS, BescheidSchema, compareBescheid, postInstructions, PostSchema, type Bescheid, type BescheidPruefung, type Post } from "@/lib/ai/finanzamt";
 import { ASSISTANT_INSTRUCTIONS, caseContext } from "@/lib/ai/assistant";
@@ -227,7 +227,7 @@ export async function download(path: string): Promise<string> {
     const c = await s.getCase(year);
     const b = c.betriebe.find((x) => x.id === url.searchParams.get("betrieb")) ?? c.betriebe[0];
     if (!b) return "Kein Betrieb angelegt.";
-    data = "\uFEFF" + journalCsv(b.buchungen.filter((x) => x.datum.startsWith(`${year}-`)));
+    data = "\uFEFF" + journalCsv(alleBuchungen(b).filter((x) => x.datum.startsWith(`${year}-`)));
     filename = `Journal-${year}.csv`;
   } else if (url.pathname === "/api/account/export") {
     const years = [];
