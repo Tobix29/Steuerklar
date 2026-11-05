@@ -58,6 +58,41 @@ const schema = (pg: boolean) => `
     created_at BIGINT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS documents_user_year ON documents(user_id, year);
+  CREATE TABLE IF NOT EXISTS kanzleien (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    created_at BIGINT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS kanzlei_mitglieder (
+    kanzlei_id TEXT NOT NULL REFERENCES kanzleien(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rolle TEXT NOT NULL DEFAULT 'berater',
+    PRIMARY KEY (kanzlei_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS vollmachten (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kanzlei_id TEXT NOT NULL REFERENCES kanzleien(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    erteilt_at BIGINT NOT NULL,
+    widerrufen_at BIGINT
+  );
+  CREATE INDEX IF NOT EXISTS vollmachten_user ON vollmachten(user_id);
+  CREATE INDEX IF NOT EXISTS vollmachten_kanzlei ON vollmachten(kanzlei_id);
+  CREATE TABLE IF NOT EXISTS abgaben (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kanzlei_id TEXT NOT NULL REFERENCES kanzleien(id) ON DELETE CASCADE,
+    year INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    dek TEXT NOT NULL,
+    data_enc TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS abgaben_user ON abgaben(user_id, year);
+  CREATE INDEX IF NOT EXISTS abgaben_kanzlei ON abgaben(kanzlei_id, status);
   CREATE TABLE IF NOT EXISTS audit_log (
     id ${pg ? "BIGSERIAL PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT"},
     user_id TEXT,
