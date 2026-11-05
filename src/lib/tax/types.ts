@@ -301,6 +301,10 @@ export const TaxCaseSchema = z.object({
   /** Umsatzsteuer: auf die Kleinunternehmerbefreiung verzichten (Regelbesteuerung, Vorsteuerabzug) */
   ustVerzicht: z.boolean().default(false),
   familienstatus: z.enum(["keine", "alleinverdiener", "alleinerzieher"]).default("keine"),
+  /** Steuer-Check: beantwortete bzw. übersprungene Fragen und Abschluss */
+  agent: z
+    .object({ erledigt: z.array(z.string().max(60)).max(200).default([]), abgeschlossenAt: z.number().int().min(0).default(0) })
+    .default({ erledigt: [], abgeschlossenAt: 0 }),
   /** Einkünfte der Partnerin/des Partners (für den Alleinverdienerabsetzbetrag) */
   partnerEinkuenfte: optMoney,
 });

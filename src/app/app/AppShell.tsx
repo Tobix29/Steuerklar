@@ -7,6 +7,7 @@ import { CaseProvider, useCase } from "./CaseContext";
 
 const NAV: { href: string; label: string; icon: string; nurDesktop?: boolean }[] = [
   { href: "/app", label: "Übersicht", icon: "🏠" },
+  { href: "/app/check", label: "Steuer-Check", icon: "✨", nurDesktop: true },
   { href: "/app/profil", label: "Über dich", icon: "👤" },
   { href: "/app/belege", label: "Belege", icon: "📸" },
   { href: "/app/ergebnis", label: "Ergebnis", icon: "📊" },

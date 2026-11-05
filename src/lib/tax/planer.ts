@@ -95,6 +95,7 @@ export function termine(c: TaxCase, r: TaxResult, today = new Date()): Termin[] 
     out.push({ datum: iso(vj + 1, 6, 30), titel: `Steuererklärung ${vj} über FinanzOnline (Pflicht)`, art: "erklaerung" });
   }
   if (r.pflichtveranlagung.length && !r.e1Erforderlich) out.push({ datum: iso(vj + 1, 9, 30), titel: `Pflichtveranlagung ${vj} (L1)`, art: "erklaerung" });
+  out.push({ datum: iso(vj + 1, 3, 1), titel: `Steuer-Check ${vj} starten – die Lohnzettel liegen jetzt in FinanzOnline`, art: "erklaerung" });
   const f = fristen(vj, today);
   if (!f.expired) out.push({ datum: iso(vj + 5, 12, 31), titel: `Letzter Tag: Arbeitnehmerveranlagung ${vj}`, art: "frist" });
   if (r.umsatzsteuer && !r.umsatzsteuer.kleinunternehmer) out.push({ datum: iso(vj + 1, 6, 30), titel: `Umsatzsteuer-Jahreserklärung ${vj} (U1)`, art: "erklaerung" });

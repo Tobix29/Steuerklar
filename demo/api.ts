@@ -15,6 +15,8 @@ import { pdfToImages } from "./pdf";
 import { fristIcs, termineIcs } from "@/lib/tax/calendar";
 import { termine } from "@/lib/tax/planer";
 import { alleBuchungen, journalCsv } from "@/lib/tax/journal";
+import { IDEEN_INSTRUCTIONS, IdeenSchema, type Ideen } from "@/lib/ai/ideen";
+import { fragen as checkFragen } from "@/lib/agent/fragen";
 import {
   abgeschlossen, AbgabeFehler, erstelleSnapshot, FREIGABE_TEXT, freigabeMoeglich, kennzahlen, STATUS, uebergang, uebermittlungsdatei, VOLLMACHT_TEXT,
   type AbgabeDaten, type Aktion, type Rolle,
@@ -485,4 +487,35 @@ export async function erklaereBrief(file: File, year: number): Promise<{ post: P
 export async function scanBuchung(file: File, year: number): Promise<{ buchung: BuchungScan }> {
   const b = await readLetter(file, BuchungScanSchema, buchungInstructions(year), "Erfasse den beigefügten Beleg.");
   return { buchung: sanitizeBuchung(b) };
+}
+
+/** KI-Ideen in der Demo über die `sample`-Capability. */
+export async function kiIdeen(year: number): Promise<{ ideen: Ideen["ideen"] }> {
+  const sample = await capability("sample");
+  if (!sample) throw new ApiError(503, "KI-Ideen sind in dieser Ansicht nicht verfügbar. Öffne das Artifact direkt auf claude.ai und melde dich an.");
+  const c = await (await store()).getCase(parseYear(String(year)));
+  const r = calculate(c);
+  const prompt = `${IDEEN_INSTRUCTIONS}
+
+<fall>
+${caseContext(c, r)}
+</fall>
+<bereits_gefragt>
+${checkFragen(c, r).map((f) => f.titel).join("\n")}
+</bereits_gefragt>
+
+Antworte ausschließlich mit einem JSON-Objekt nach diesem JSON-Schema (kein Markdown):
+${JSON.stringify(z.toJSONSchema(IdeenSchema))}`;
+  try {
+    const out = await sample.json(prompt, { modelTier: "default", cache: false });
+    const parsed = IdeenSchema.safeParse(out);
+    if (!parsed.success) throw new ApiError(422, "Die KI lieferte ungültige Daten.");
+    return { ideen: parsed.data.ideen.slice(0, 5) };
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const code = (err as { code?: string })?.code;
+    if (code === "not_granted") throw new ApiError(403, "Du hast Claude für diese Seite nicht erlaubt.");
+    if (code === "rate_limited") throw new ApiError(429, "Die KI ist gerade ausgelastet.");
+    throw new ApiError(500, "Die KI-Ideen konnten nicht erstellt werden.");
+  }
 }

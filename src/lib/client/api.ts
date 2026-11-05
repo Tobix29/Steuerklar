@@ -97,3 +97,8 @@ export function scanBuchung(file: File, year: number) {
   fd.append("year", String(year));
   return api<{ buchung: import("@/lib/ai/buchung").BuchungScan }>("/api/buchhaltung/scan", { method: "POST", body: fd });
 }
+
+/** KI-Ideen für den Steuer-Check. */
+export function kiIdeen(year: number) {
+  return api<{ ideen: import("@/lib/ai/ideen").Ideen["ideen"] }>("/api/agent/ideen", { method: "POST", json: { year } });
+}

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { eur } from "@/lib/client/api";
 import { insights } from "@/lib/tax/insights";
+import { fragen, mitErsparnis } from "@/lib/agent/fragen";
 import { useCase } from "./CaseContext";
 import { YearsOverview } from "./YearsOverview";
 import { NaechsteTermine, RuecklagenPlaner } from "./Planer";
@@ -59,6 +60,22 @@ export default function Overview() {
           {hasIncome && <Link className="btn btn-secondary" href="/app/ergebnis">Details ansehen</Link>}
         </div>
       </section>
+
+      {(() => {
+        const offen = mitErsparnis(data, result, fragen(data, result));
+        if (!offen.length) return null;
+        const summe = offen.reduce((s, f) => s + Math.max(0, f.ersparnis), 0);
+        return (
+          <Link href="/app/check" className="card card-lg" style={{ color: "var(--text)", display: "flex", gap: 16, alignItems: "center", background: "linear-gradient(135deg, var(--accent-soft, var(--surface-2)), var(--bg-elevated))" }}>
+            <span style={{ fontSize: 34 }} aria-hidden="true">✨</span>
+            <span className="grow">
+              <strong style={{ fontSize: 18 }}>Steuer-Check {year}</strong>
+              <div className="small muted">{offen.length} kurze Frage(n){summe >= 20 ? ` · bis zu ca. ${eur(summe, 0)} mehr` : ""} – dann ist deine Erklärung fertig zum Freigeben.</div>
+            </span>
+            <span className="btn btn-sm">Starten</span>
+          </Link>
+        );
+      })()}
 
       <YearsOverview />
 
