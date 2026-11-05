@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Alert, Platform, Pressable, Text, View } from "react-native";
+import { Alert, Platform, Pressable, Share, Text, View } from "react-native";
 import { Badge, Button, Card, MoneyRow, Notice, NumberRow, Row, Screen, Section, Segmented, SwitchRow, TextRow, useTextStyles } from "~/components/ui";
 import { downloadAuthed, removeLocalFile } from "~/lib/api";
 import { useCase } from "~/lib/case";
@@ -9,8 +9,8 @@ import { eur, uid } from "~/lib/format";
 import { radius, useColors } from "~/lib/theme";
 import type { TaxCase } from "~/lib/types";
 import {
-  faelligAm, ibanGueltig, kunden, naechsteNummer, neueRechnung, offenePosten, pflichtangaben, rechnungStatus, rechnungSummen, steuerHinweis,
-  type Firma, type Rechnung,
+  faelligAm, ibanGueltig, istUnternehmen, kunden, MAHNSTUFEN, mahnSumme, mahnText, mahnungEntwurf, naechsteMahnung, naechsteNummer, neueRechnung, offenePosten,
+  pflichtangaben, rechnungStatus, rechnungSummen, steuerHinweis, VERZUG, type Firma, type Mahnung, type Rechnung,
 } from "@core/tax/rechnung";
 
 type Betrieb = TaxCase["betriebe"][number];
@@ -23,6 +23,45 @@ const STATUS = {
   bezahlt: ["Bezahlt", "green"],
   storniert: ["Storniert", "neutral"],
 } as const;
+
+/** Zahlungserinnerung bzw. Mahnung erstellen (wie im Web). */
+function MahnPanel({ r, firma, onVermerken, onClose }: { r: Rechnung; firma: Firma; onVermerken: (m: Mahnung) => void; onClose: () => void }) {
+  const t = useTextStyles();
+  const c = useColors();
+  const v = naechsteMahnung(r);
+  const [m, setM] = useState<Mahnung | null>(() => (v ? mahnungEntwurf(r, firma, v.stufe) : null));
+  if (!v || !m) return null;
+  const b2b = istUnternehmen(r);
+  const s = mahnSumme(r, firma, m);
+  const { text } = mahnText(r, firma, m);
+  const setZins = (satz: number) => setM({ ...m, zinssatz: satz, zinsen: satz ? mahnungEntwurf(r, firma, m.stufe, new Date(`${m.datum}T12:00:00Z`), satz).zinsen : 0 });
+  return (
+    <Card style={{ gap: 8, marginHorizontal: 12, marginBottom: 12 }}>
+      <Text style={[t.body, { fontWeight: "600" }]}>{MAHNSTUFEN[m.stufe].titel} zu {r.nummer}</Text>
+      <NumberRow
+        label="Verzugszinsen % p. a."
+        sublabel={`${b2b ? `Unternehmen: ${VERZUG.ueberBasiszins.toLocaleString("de-DE")} %-Punkte über dem Basiszinssatz der OeNB (§ 456 UGB)` : `Privatkund:in: ${VERZUG.verbraucher} % (§ 1000 ABGB)`}${m.stufe === 1 ? " – bei der Erinnerung meist noch nicht" : ""}`}
+        value={m.zinssatz}
+        max={30}
+        suffix="%"
+        onChange={setZins}
+      />
+      <MoneyRow label={b2b ? "Pauschale (§ 458 UGB)" : "Mahnspesen"} sublabel={b2b ? "40 € einmal je Forderung" : "nur tatsächliche, angemessene Kosten"} value={m.gebuehr} onChange={(x) => setM({ ...m, gebuehr: x })} />
+      <TextRow label="Neue Zahlungsfrist" value={m.frist} placeholder="JJJJ-MM-TT" onChangeText={(x) => setM({ ...m, frist: x.slice(0, 10) })} />
+      <Text style={t.body}>
+        Zu zahlen: <Text style={{ fontWeight: "700" }}>{eur(s.gesamt)}</Text>
+        <Text style={t.muted}> ({eur(s.offen)} offen{s.zinsen ? ` + ${eur(s.zinsen)} Zinsen` : ""}{s.gebuehren ? ` + ${eur(s.gebuehren)} Kosten` : ""})</Text>
+      </Text>
+      <View style={{ backgroundColor: c.bg, borderRadius: radius.md, padding: 12 }}>
+        <Text style={[t.muted, { fontSize: 13, lineHeight: 19 }]} accessibilityLabel="Vorschau Mahntext">{text}</Text>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Button title="Erstellen & vermerken" style={{ flex: 1 }} disabled={!istDatum(m.frist) || m.frist < m.datum} onPress={() => onVermerken(m)} />
+        <Button title="Abbrechen" variant="secondary" style={{ flex: 1 }} onPress={onClose} />
+      </View>
+    </Card>
+  );
+}
 
 /** Bestätigung (nativ Alert, in der Web-Vorschau confirm). */
 function bestaetigen(titel: string, text: string, ok: () => void) {
@@ -148,6 +187,7 @@ export default function Rechnungen() {
   const [zahlung, setZahlung] = useState<{ id: string; datum: string } | null>(null);
   const [aktiv, setAktiv] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [mahnen, setMahnen] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -202,6 +242,33 @@ export default function Rechnungen() {
     }
   }
 
+  async function mahnPdf(r: Rechnung, m: Mahnung) {
+    setErr(null);
+    setBusy(`${r.id}-${m.stufe}`);
+    try {
+      const name = `Mahnung-${m.stufe}-${r.nummer.replace(/[^\w-]+/g, "_")}.pdf`;
+      const uri = await downloadAuthed(`/api/rechnungen/mahnung?year=${year}&betrieb=${encodeURIComponent(b!.id)}&id=${encodeURIComponent(r.id)}&stufe=${m.stufe}`, name, "application/pdf");
+      if (uri) {
+        if (!(await Sharing.isAvailableAsync())) throw new Error("Teilen ist auf diesem Gerät nicht verfügbar.");
+        await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: name });
+        removeLocalFile(uri);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Das PDF konnte nicht erzeugt werden.");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function mahnTeilen(r: Rechnung, m: Mahnung) {
+    const { betreff, text } = mahnText(r, b!.firma, m);
+    try {
+      await Share.share({ title: betreff, message: text }, { subject: betreff, dialogTitle: betreff });
+    } catch {
+      setErr("Teilen ist auf diesem Gerät nicht verfügbar.");
+    }
+  }
+  const mahnFaellig = b.rechnungen.filter((r) => naechsteMahnung(r)?.faellig);
+
   return (
     <Screen webTitle="Rechnungen">
       <Text style={t.muted}>Rechnungen mit allen Pflichtangaben schreiben, als PDF verschicken – bezahlte Rechnungen landen automatisch im Journal.</Text>
@@ -216,6 +283,13 @@ export default function Rechnungen() {
         <Row label={`Bezahlt ${year}`} sublabel="im Journal gebucht" value={eur(bezahltJahr)} />
       </Section>
 
+      {mahnFaellig.length > 0 && !edit && (
+        <Notice
+          tone="orange"
+          icon="⏰"
+          text={`${mahnFaellig.length} Rechnung(en) sind überfällig – Zeit für ${mahnFaellig.map((r) => `${MAHNSTUFEN[naechsteMahnung(r)!.stufe].titel.toLowerCase()} zu ${r.nummer}`).join(", ")}.`}
+        />
+      )}
       {err && <Notice tone="red" icon="⚠️" text={err} />}
       {msg && !edit && <Notice tone="green" icon="✓" text={msg} />}
 
@@ -252,6 +326,45 @@ export default function Rechnungen() {
                   chevron
                   onPress={() => (st === "entwurf" ? (setMsg(null), setEdit(r)) : setAktiv(offenHier ? null : r.id))}
                 />
+                {r.mahnungen.length > 0 && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 16, paddingBottom: 8 }}>
+                    {r.mahnungen.map((m) => (
+                      <View key={m.stufe} style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <Badge text={`${MAHNSTUFEN[m.stufe].titel} · ${de(m.datum)} · Frist ${de(m.frist)}`} tone={m.stufe === 3 ? "red" : "orange"} />
+                        <Pressable accessibilityRole="button" disabled={saveState === "saving" || busy !== null} onPress={() => void mahnPdf(r, m)} hitSlop={8}>
+                          <Text style={{ color: saveState === "saving" || busy !== null ? c.muted : c.accent, fontSize: 15 }}>{busy === `${r.id}-${m.stufe}` ? "PDF …" : saveState === "saving" ? "Speichert …" : "PDF"}</Text>
+                        </Pressable>
+                        <Pressable accessibilityRole="button" onPress={() => void mahnTeilen(r, m)} hitSlop={8}>
+                          <Text style={{ color: c.accent, fontSize: 15 }}>Teilen</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {(() => {
+                  const v = naechsteMahnung(r);
+                  if (!v || !v.faellig || mahnen === r.id) return null;
+                  return (
+                    <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
+                      <Button title={`${MAHNSTUFEN[v.stufe].titel} erstellen`} variant="danger" onPress={() => { setMsg(null); setMahnen(r.id); }} />
+                    </View>
+                  );
+                })()}
+                {mahnen === r.id && (
+                  <MahnPanel
+                    r={r}
+                    firma={b.firma}
+                    onClose={() => setMahnen(null)}
+                    onVermerken={(m) => {
+                      setB((x) => {
+                        const y = x.rechnungen.find((z) => z.id === r.id)!;
+                        y.mahnungen = [...y.mahnungen.filter((z) => z.stufe !== m.stufe), m];
+                      });
+                      setMahnen(null);
+                      setMsg(`${MAHNSTUFEN[m.stufe].titel} erstellt – jetzt als PDF oder per Teilen verschicken`);
+                    }}
+                  />
+                )}
                 {offenHier && st !== "entwurf" && (
                   <Card style={{ gap: 8, marginHorizontal: 12, marginBottom: 12 }}>
                     <Button

@@ -4,7 +4,7 @@ import { Row, Screen, Section } from "~/components/ui";
 import { api } from "~/lib/api";
 import { useCase } from "~/lib/case";
 import { eur } from "~/lib/format";
-import { offenePosten } from "@core/tax/rechnung";
+import { naechsteMahnung, offenePosten } from "@core/tax/rechnung";
 
 export default function Mehr() {
   const router = useRouter();
@@ -42,7 +42,8 @@ export default function Mehr() {
             const op = data.betriebe.flatMap((b) => offenePosten(b));
             const ue = op.filter((o) => o.ueberfaellig);
             if (!op.length) return "Keine offenen Rechnungen";
-            return `${eur(op.reduce((s, o) => s + o.brutto, 0))} offen${ue.length ? ` · ${eur(ue.reduce((s, o) => s + o.brutto, 0))} überfällig` : ""}`;
+            const mahn = data.betriebe.flatMap((b) => b.rechnungen).filter((r) => naechsteMahnung(r)?.faellig).length;
+            return `${eur(op.reduce((s, o) => s + o.brutto, 0))} offen${ue.length ? ` · ${eur(ue.reduce((s, o) => s + o.brutto, 0))} überfällig` : ""}${mahn ? ` · ${mahn} Mahnung(en) fällig` : ""}`;
           })()}
           chevron
           onPress={() => router.push("/mehr/rechnungen")}
